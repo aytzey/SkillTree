@@ -3,29 +3,142 @@
 @tailwind utilities;
 
 :root {
-  --bg-primary: #0a0a1a;
-  --bg-secondary: #111128;
-  --bg-card: #16163a;
+  --bg-primary: #08081a;
+  --bg-secondary: #0e0e28;
+  --bg-card: #14143a;
   --border-subtle: #2a2a5a;
-  --text-primary: #e2e8f0;
-  --text-secondary: #94a3b8;
-  --glow-gold: #f59e0b;
+  --text-primary: #e8e4df;
+  --text-secondary: #9a9494;
+  --glow-gold: #e8a912;
   --glow-blue: #6366f1;
   --glow-green: #10b981;
   --glow-locked: #475569;
   --neon-flow: #818cf8;
+  --gold-rich: #d4930a;
+  --gold-bright: #f5c842;
 }
 
 body {
   background: var(--bg-primary);
   color: var(--text-primary);
-  font-family: "Inter", sans-serif;
+}
+
+/* Noise grain texture overlay */
+.bg-grain::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  background-size: 256px 256px;
 }
 
 /* Subtle grid background */
 .bg-grid {
   background-image:
-    linear-gradient(rgba(99, 102, 241, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(99, 102, 241, 0.03) 1px, transparent 1px);
-  background-size: 40px 40px;
+    linear-gradient(rgba(212, 147, 10, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(212, 147, 10, 0.02) 1px, transparent 1px);
+  background-size: 60px 60px;
+}
+
+/* Radial vignette */
+.vignette {
+  background: radial-gradient(
+    ellipse 70% 60% at 50% 45%,
+    transparent 0%,
+    rgba(8, 8, 26, 0.4) 60%,
+    rgba(8, 8, 26, 0.85) 100%
+  );
+}
+
+/* Hero glow behind tree */
+.hero-glow {
+  background: radial-gradient(
+    ellipse 50% 50% at 50% 50%,
+    rgba(212, 147, 10, 0.08) 0%,
+    rgba(99, 102, 241, 0.03) 40%,
+    transparent 70%
+  );
+}
+
+/* Floating particles */
+@keyframes float-up {
+  0% { transform: translateY(0) translateX(0) scale(1); opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { transform: translateY(-400px) translateX(30px) scale(0.5); opacity: 0; }
+}
+
+@keyframes float-up-2 {
+  0% { transform: translateY(0) translateX(0) scale(0.8); opacity: 0; }
+  15% { opacity: 0.8; }
+  85% { opacity: 0.6; }
+  100% { transform: translateY(-350px) translateX(-20px) scale(0.3); opacity: 0; }
+}
+
+.particle {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--gold-bright);
+  box-shadow: 0 0 6px 2px rgba(245, 200, 66, 0.4);
+  animation: float-up 8s ease-in-out infinite;
+}
+
+.particle:nth-child(2n) {
+  animation: float-up-2 10s ease-in-out infinite;
+  background: rgba(129, 140, 248, 0.6);
+  box-shadow: 0 0 6px 2px rgba(129, 140, 248, 0.3);
+}
+
+/* Entrance animations */
+@keyframes fade-up {
+  0% { opacity: 0; transform: translateY(30px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+.animate-fade-up {
+  animation: fade-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  opacity: 0;
+}
+
+.animate-fade-in {
+  animation: fade-in 1s ease-out forwards;
+  opacity: 0;
+}
+
+/* Gold shimmer text effect */
+.text-shimmer {
+  background: linear-gradient(
+    110deg,
+    var(--gold-rich) 0%,
+    var(--gold-bright) 35%,
+    var(--gold-rich) 50%,
+    var(--gold-bright) 75%,
+    var(--gold-rich) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 6s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0%, 100% { background-position: 200% center; }
+  50% { background-position: 0% center; }
+}
+
+/* Node pulse glow */
+@keyframes node-breathe {
+  0%, 100% { box-shadow: 0 0 15px rgba(212, 147, 10, 0.3), 0 0 30px rgba(212, 147, 10, 0.1); }
+  50% { box-shadow: 0 0 25px rgba(212, 147, 10, 0.5), 0 0 50px rgba(212, 147, 10, 0.2); }
 }

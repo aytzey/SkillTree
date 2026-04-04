@@ -1,38 +1,89 @@
 import Link from "next/link";
 import { HeroTree } from "@/components/landing/hero-tree";
+import { Particles } from "@/components/landing/particles";
 
 export default function Home() {
   return (
-    <div className="min-h-screen flex flex-col">
-      <nav className="h-14 border-b border-rpg-border bg-rpg-bg-secondary/50 backdrop-blur flex items-center justify-between px-6">
-        <span className="text-lg font-bold text-rpg-gold">SkillTree</span>
-        <div className="flex items-center gap-3">
-          <Link href="/login" className="text-sm text-slate-300 hover:text-white transition">Sign In</Link>
-          <Link href="/register" className="text-sm bg-rpg-gold/20 border border-rpg-gold text-rpg-gold rounded-lg px-4 py-1.5 hover:bg-rpg-gold/30 transition">Get Started</Link>
+    <div className="relative min-h-screen flex flex-col bg-grain bg-grid overflow-hidden">
+      {/* Ambient particles */}
+      <Particles />
+
+      {/* Nav */}
+      <nav className="relative z-20 h-16 flex items-center justify-between px-8">
+        <span className="text-xl font-[family-name:var(--font-cinzel)] font-bold tracking-wide" style={{ color: "var(--gold-rich)" }}>
+          SKILLTREE
+        </span>
+        <div className="flex items-center gap-4">
+          <Link href="/login" className="text-sm tracking-wide uppercase text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors duration-300">
+            Sign In
+          </Link>
+          <Link href="/register" className="text-sm tracking-widest uppercase px-5 py-2 border border-[var(--gold-rich)] text-[var(--gold-rich)] hover:bg-[var(--gold-rich)] hover:text-[var(--bg-primary)] transition-all duration-300 font-semibold">
+            Begin
+          </Link>
         </div>
       </nav>
 
-      <main className="flex-1 flex flex-col items-center justify-center px-6 py-16">
-        <h1 className="text-5xl md:text-6xl font-bold text-center mb-4">
-          <span className="text-white">Build </span>
-          <span className="text-rpg-gold">Skill Trees</span>
-          <span className="text-white"> Like a Game</span>
-        </h1>
-        <p className="text-lg text-slate-400 text-center max-w-xl mb-12">
-          Create beautiful, interactive skill trees for any topic. AI generates the structure, you customize every detail. Track progress. Share with anyone.
+      {/* Hero */}
+      <main className="relative z-10 flex-1 flex flex-col items-center justify-center px-6">
+        {/* Radial glow behind tree */}
+        <div className="absolute inset-0 hero-glow pointer-events-none" />
+
+        {/* Heading */}
+        <div className="relative text-center mb-6 animate-fade-up" style={{ animationDelay: "0.1s" }}>
+          <h1 className="font-[family-name:var(--font-cinzel)] font-bold leading-[0.95] tracking-tight">
+            <span className="block text-[clamp(2.5rem,7vw,5.5rem)] text-[var(--text-primary)]">
+              Forge Your
+            </span>
+            <span className="block text-[clamp(3.5rem,10vw,8rem)] text-shimmer mt-1">
+              Skill Tree
+            </span>
+          </h1>
+        </div>
+
+        {/* Subtitle */}
+        <p className="relative text-center text-[var(--text-secondary)] max-w-md text-base leading-relaxed mb-14 animate-fade-up" style={{ animationDelay: "0.3s" }}>
+          AI crafts the path. You master the journey.
+          <br />
+          <span className="text-sm opacity-70">Build, track, and share interactive skill trees on any topic.</span>
         </p>
 
-        <HeroTree />
+        {/* Demo tree */}
+        <div className="relative animate-fade-in" style={{ animationDelay: "0.6s" }}>
+          <HeroTree />
+        </div>
 
-        <div className="mt-12 flex gap-4">
-          <Link href="/register" className="bg-rpg-gold/20 border border-rpg-gold text-rpg-gold rounded-xl px-8 py-3 text-lg font-medium hover:bg-rpg-gold/30 transition">Start Building</Link>
-          <Link href="/login" className="bg-rpg-card border border-rpg-border text-slate-300 rounded-xl px-8 py-3 text-lg hover:border-rpg-neon transition">Sign In</Link>
+        {/* CTA */}
+        <div className="relative flex gap-5 mt-14 animate-fade-up" style={{ animationDelay: "0.9s" }}>
+          <Link
+            href="/register"
+            className="group relative px-10 py-4 font-[family-name:var(--font-cinzel)] font-bold text-lg tracking-wider uppercase overflow-hidden transition-all duration-300"
+            style={{
+              background: "linear-gradient(135deg, var(--gold-rich), var(--gold-bright))",
+              color: "var(--bg-primary)",
+              clipPath: "polygon(8px 0%, 100% 0%, calc(100% - 8px) 100%, 0% 100%)",
+            }}
+          >
+            <span className="relative z-10">Start Building</span>
+          </Link>
+          <Link
+            href="/login"
+            className="px-10 py-4 font-[family-name:var(--font-cinzel)] text-lg tracking-wider uppercase border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:border-[var(--gold-rich)] hover:text-[var(--gold-rich)] transition-all duration-300"
+            style={{
+              clipPath: "polygon(8px 0%, 100% 0%, calc(100% - 8px) 100%, 0% 100%)",
+            }}
+          >
+            Sign In
+          </Link>
         </div>
       </main>
 
-      <footer className="h-12 border-t border-rpg-border flex items-center justify-center">
-        <span className="text-xs text-slate-500">Machinity</span>
+      {/* Footer */}
+      <footer className="relative z-10 h-12 flex items-center justify-center">
+        <span className="text-xs text-[var(--text-secondary)] opacity-40 tracking-widest uppercase font-[family-name:var(--font-cinzel)]">Machinity</span>
       </footer>
+
+      {/* Vignette overlay */}
+      <div className="fixed inset-0 vignette pointer-events-none z-[1]" />
     </div>
   );
 }
