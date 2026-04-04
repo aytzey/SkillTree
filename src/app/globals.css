@@ -1,0 +1,31 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-primary: #0a0a1a;
+  --bg-secondary: #111128;
+  --bg-card: #16163a;
+  --border-subtle: #2a2a5a;
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --glow-gold: #f59e0b;
+  --glow-blue: #6366f1;
+  --glow-green: #10b981;
+  --glow-locked: #475569;
+  --neon-flow: #818cf8;
+}
+
+body {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: "Inter", sans-serif;
+}
+
+/* Subtle grid background */
+.bg-grid {
+  background-image:
+    linear-gradient(rgba(99, 102, 241, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(99, 102, 241, 0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
