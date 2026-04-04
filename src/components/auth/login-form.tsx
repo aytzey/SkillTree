@@ -1,32 +1,44 @@
 "use client";
 
-import { signIn } from "next-auth/react";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 export function LoginForm() {
-  const router = useRouter();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (!email || !password) return;
     setLoading(true);
     setError("");
 
-    const formData = new FormData(e.currentTarget);
-    const res = await signIn("credentials", {
-      email: formData.get("email"),
-      password: formData.get("password"),
-      redirect: false,
-    });
+    try {
+      const csrfRes = await fetch("/api/auth/csrf");
+      const { csrfToken } = await csrfRes.json();
+
+      await fetch("/api/auth/callback/credentials", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ email, password, csrfToken }),
+        credentials: "include",
+      });
+
+      const sessionRes = await fetch("/api/auth/session", { credentials: "include" });
+      const session = await sessionRes.json();
+
+      if (session?.user) {
+        window.location.href = "/dashboard";
+        return;
+      } else {
+        setError("Invalid email or password");
+      }
+    } catch {
+      setError("Something went wrong");
+    }
 
     setLoading(false);
-    if (res?.error) {
-      setError("Invalid email or password");
-    } else {
-      router.push("/dashboard");
-    }
   }
 
   return (
@@ -45,6 +57,8 @@ export function LoginForm() {
           name="email"
           type="email"
           required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
           className="w-full bg-rpg-bg-secondary border border-rpg-border rounded-lg px-3 py-2 text-white focus:outline-none focus:border-rpg-gold transition"
         />
       </div>
@@ -57,6 +71,8 @@ export function LoginForm() {
           name="password"
           type="password"
           required
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
           className="w-full bg-rpg-bg-secondary border border-rpg-border rounded-lg px-3 py-2 text-white focus:outline-none focus:border-rpg-gold transition"
         />
       </div>

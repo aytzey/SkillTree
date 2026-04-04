@@ -1,30 +1,24 @@
 "use client";
 
-import { signIn } from "next-auth/react";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 export function RegisterForm() {
-  const router = useRouter();
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (!name || !email || !password) return;
     setLoading(true);
     setError("");
-
-    const formData = new FormData(e.currentTarget);
-    const body = {
-      name: formData.get("name"),
-      email: formData.get("email"),
-      password: formData.get("password"),
-    };
 
     const res = await fetch("/api/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ name, email, password }),
     });
 
     if (!res.ok) {
@@ -34,13 +28,21 @@ export function RegisterForm() {
       return;
     }
 
-    await signIn("credentials", {
-      email: body.email,
-      password: body.password,
-      redirect: false,
-    });
-    setLoading(false);
-    router.push("/dashboard");
+    try {
+      const csrfRes = await fetch("/api/auth/csrf");
+      const { csrfToken } = await csrfRes.json();
+
+      await fetch("/api/auth/callback/credentials", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ email, password, csrfToken }),
+        credentials: "include",
+      });
+
+      window.location.href = "/dashboard";
+    } catch {
+      window.location.href = "/login";
+    }
   }
 
   return (
@@ -59,6 +61,8 @@ export function RegisterForm() {
           name="name"
           type="text"
           required
+          value={name}
+          onChange={(e) => setName(e.target.value)}
           className="w-full bg-rpg-bg-secondary border border-rpg-border rounded-lg px-3 py-2 text-white focus:outline-none focus:border-rpg-gold transition"
         />
       </div>
@@ -71,6 +75,8 @@ export function RegisterForm() {
           name="email"
           type="email"
           required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
           className="w-full bg-rpg-bg-secondary border border-rpg-border rounded-lg px-3 py-2 text-white focus:outline-none focus:border-rpg-gold transition"
         />
       </div>
@@ -84,6 +90,8 @@ export function RegisterForm() {
           type="password"
           required
           minLength={6}
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
           className="w-full bg-rpg-bg-secondary border border-rpg-border rounded-lg px-3 py-2 text-white focus:outline-none focus:border-rpg-gold transition"
         />
       </div>

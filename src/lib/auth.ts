@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { prisma } from "./prisma";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  trustHost: true,
   providers: [
     Credentials({
       credentials: {
@@ -38,13 +39,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async session({ session, token }) {
       if (session.user) session.user.id = token.id as string;
       return session;
-    },
-    async authorized({ auth, request }) {
-      const isProtected =
-        request.nextUrl.pathname.startsWith("/dashboard") ||
-        request.nextUrl.pathname.startsWith("/tree");
-      if (isProtected && !auth) return false;
-      return true;
     },
   },
 });

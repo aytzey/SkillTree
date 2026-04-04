@@ -22,7 +22,13 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetch("/api/trees")
-      .then((r) => r.json())
+      .then((r) => {
+        if (r.status === 401) {
+          window.location.href = "/login";
+          return [];
+        }
+        return r.json();
+      })
       .then((data) => { setTrees(data); setLoading(false); });
   }, []);
 
