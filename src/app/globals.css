@@ -142,3 +142,189 @@ body {
   0%, 100% { box-shadow: 0 0 15px rgba(212, 147, 10, 0.3), 0 0 30px rgba(212, 147, 10, 0.1); }
   50% { box-shadow: 0 0 25px rgba(212, 147, 10, 0.5), 0 0 50px rgba(212, 147, 10, 0.2); }
 }
+
+/* ===================== POE EDITOR THEME ===================== */
+
+/* Editor canvas background — deep obsidian with subtle texture */
+.poe-canvas-bg {
+  background-color: #050510;
+  background-image:
+    radial-gradient(ellipse 80% 60% at 50% 50%, rgba(90, 70, 20, 0.04) 0%, transparent 70%),
+    radial-gradient(circle at 30% 40%, rgba(99, 102, 241, 0.02) 0%, transparent 50%),
+    radial-gradient(circle at 70% 60%, rgba(212, 160, 23, 0.02) 0%, transparent 50%);
+}
+
+.poe-panel {
+  background: linear-gradient(180deg, #141430 0%, #10102a 100%);
+  border-color: #2a2a55;
+}
+
+.poe-header {
+  background: linear-gradient(180deg, #141430 0%, #0e0e24 100%);
+  border-bottom: 1px solid #2a2a55;
+  box-shadow: 0 2px 20px rgba(0, 0, 0, 0.5);
+}
+
+.poe-inspector {
+  background: linear-gradient(180deg, #121228 0%, #0e0e22 100%);
+  border-left: 1px solid #2a2a55;
+  box-shadow: -4px 0 30px rgba(0, 0, 0, 0.4);
+}
+
+.poe-node {
+  position: relative;
+  border-radius: 12px;
+  border: 2px solid transparent;
+  background: radial-gradient(ellipse at 50% 30%, #1a1a3a 0%, #10102a 100%);
+  transition: all 0.3s ease;
+}
+
+.poe-node-locked {
+  border-color: #2a2a35;
+  opacity: 0.45;
+  filter: saturate(0.2) brightness(0.7);
+}
+
+.poe-node-available {
+  border-color: #c4941a;
+  box-shadow:
+    0 0 15px rgba(212, 160, 23, 0.25),
+    0 0 40px rgba(212, 160, 23, 0.08),
+    inset 0 0 20px rgba(212, 160, 23, 0.05);
+  animation: node-breathe 3s ease-in-out infinite;
+  --select-color: rgba(212, 160, 23, 0.5);
+  --select-color-dim: rgba(212, 160, 23, 0.15);
+}
+
+.poe-node-in-progress {
+  border-color: #5b5ef0;
+  box-shadow:
+    0 0 15px rgba(91, 94, 240, 0.3),
+    0 0 40px rgba(124, 58, 237, 0.1),
+    inset 0 0 20px rgba(91, 94, 240, 0.05);
+  --select-color: rgba(91, 94, 240, 0.5);
+  --select-color-dim: rgba(91, 94, 240, 0.15);
+}
+
+.poe-node-completed {
+  border-color: #0d9668;
+  box-shadow:
+    0 0 12px rgba(13, 150, 104, 0.25),
+    0 0 30px rgba(13, 150, 104, 0.08),
+    inset 0 0 15px rgba(13, 150, 104, 0.05);
+  --select-color: rgba(13, 150, 104, 0.5);
+  --select-color-dim: rgba(13, 150, 104, 0.15);
+}
+
+.poe-node-selected {
+  animation: select-pulse 1.5s ease-in-out infinite;
+}
+
+.poe-node:not(.poe-node-locked):hover:not(.poe-node-selected) {
+  filter: brightness(1.2);
+  transform: scale(1.03);
+}
+
+.poe-section-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, #2a2a55 50%, transparent 100%);
+}
+
+.poe-ornate-border {
+  background: linear-gradient(90deg,
+    transparent 0%,
+    #8b6914 20%,
+    #c4941a 50%,
+    #8b6914 80%,
+    transparent 100%
+  );
+  height: 1px;
+  opacity: 0.4;
+}
+
+.poe-input {
+  background: #0a0a18;
+  border: 1px solid #1e1e40;
+  border-radius: 6px;
+  color: #e8e4df;
+  transition: border-color 0.2s ease;
+}
+
+.poe-input:focus {
+  outline: none;
+  border-color: #c4941a;
+  box-shadow: 0 0 10px rgba(196, 148, 26, 0.15);
+}
+
+.poe-input::placeholder {
+  color: #5a5a6a;
+}
+
+.poe-btn {
+  border: 1px solid #2a2a55;
+  background: #141430;
+  color: #8a8a9a;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.poe-btn:hover {
+  border-color: #3a3a70;
+  color: #e8e4df;
+  background: #1a1a3a;
+}
+
+.poe-btn-gold {
+  border-color: #8b6914;
+  color: #e8b828;
+  background: rgba(196, 148, 26, 0.1);
+}
+
+.poe-btn-gold:hover {
+  border-color: #c4941a;
+  background: rgba(196, 148, 26, 0.2);
+  color: #f5d060;
+}
+
+.poe-btn-danger {
+  border-color: #7f1d1d;
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.poe-btn-danger:hover {
+  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.15);
+}
+
+.poe-save-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.poe-save-unsaved { background: #c4941a; }
+.poe-save-saving { background: #5b5ef0; animation: node-breathe 1s ease-in-out infinite; }
+.poe-save-saved { background: #0d9668; }
+.poe-save-failed { background: #ef4444; }
+
+.poe-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.poe-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.poe-scrollbar::-webkit-scrollbar-thumb {
+  background: #2a2a55;
+  border-radius: 3px;
+}
+.poe-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #3a3a70;
+}
+
+@keyframes edge-energy {
+  0% { stroke-dashoffset: 24; }
+  100% { stroke-dashoffset: 0; }
+}
