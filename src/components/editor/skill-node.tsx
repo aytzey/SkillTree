@@ -11,60 +11,103 @@ interface SkillNodePayload {
   difficulty: number;
   progress: number;
   description: string | null;
+  selected?: boolean;
 }
 
-const statusStyles: Record<NodeStatus, string> = {
-  locked: "border-rpg-locked/50 bg-rpg-bg/80 opacity-50 grayscale",
-  available:
-    "border-rpg-gold bg-rpg-card shadow-[0_0_20px_rgba(245,158,11,0.3)]",
-  in_progress:
-    "border-rpg-blue bg-rpg-card shadow-[0_0_20px_rgba(99,102,241,0.4)]",
-  completed:
-    "border-rpg-green bg-rpg-card shadow-[0_0_20px_rgba(16,185,129,0.4)]",
+const stateClasses: Record<NodeStatus, string> = {
+  locked: "poe-node-locked",
+  available: "poe-node-available",
+  in_progress: "poe-node-in-progress",
+  completed: "poe-node-completed",
 };
 
-const statusIcons: Record<NodeStatus, string> = {
-  locked: "\u{1F512}",
-  available: "\u{2728}",
-  in_progress: "\u{1F504}",
-  completed: "\u{2705}",
+const stateRingColor: Record<NodeStatus, string> = {
+  locked: "#2a2a35",
+  available: "#c4941a",
+  in_progress: "#5b5ef0",
+  completed: "#0d9668",
 };
 
-function SkillNodeComponent({ data }: NodeProps) {
-  const { title, status, difficulty, progress } =
+const statusIndicator: Record<NodeStatus, { label: string; color: string }> = {
+  locked: { label: "Sealed", color: "text-poe-locked-mid" },
+  available: { label: "Ready", color: "text-poe-gold-bright" },
+  in_progress: { label: "Active", color: "text-poe-progress-blue" },
+  completed: { label: "Mastered", color: "text-poe-complete-bright" },
+};
+
+function DifficultyPips({ level }: { level: number }) {
+  return (
+    <div className="flex gap-0.5">
+      {[1, 2, 3, 4, 5].map((i) => (
+        <div
+          key={i}
+          className={`w-1.5 h-1.5 rounded-full ${
+            i <= level ? "bg-poe-gold-mid" : "bg-poe-border-dim"
+          }`}
+        />
+      ))}
+    </div>
+  );
+}
+
+function SkillNodeComponent({ data, id }: NodeProps) {
+  const { title, status, difficulty, progress, selected } =
     data as unknown as SkillNodePayload;
-  const stars = "\u{2B50}".repeat(difficulty);
 
   return (
     <motion.div
-      initial={{ scale: 0.8, opacity: 0 }}
+      initial={{ scale: 0.85, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
-      className={`relative px-4 py-3 rounded-xl border-2 min-w-[140px] max-w-[200px] transition-all duration-300 cursor-pointer ${statusStyles[status]}`}
+      transition={{ duration: 0.3, ease: "easeOut" }}
+      className={`poe-node ${stateClasses[status]} ${
+        selected ? "poe-node-selected" : ""
+      } min-w-[130px] max-w-[180px] px-3 py-2.5 cursor-pointer`}
     >
       <Handle
         type="target"
         position={Position.Top}
-        className="!bg-rpg-neon !w-3 !h-3 !border-2 !border-rpg-bg"
+        className="!w-2.5 !h-2.5 !border-2 !rounded-full !-top-1.5"
+        style={{
+          background: stateRingColor[status],
+          borderColor: "#0a0a18",
+        }}
       />
-      <div className="flex items-center gap-2 mb-1">
-        <span className="text-sm">{statusIcons[status]}</span>
-        <span className="text-sm font-semibold text-white truncate">
-          {title}
-        </span>
+
+      <div className="flex items-center justify-between mb-1.5">
+        <div
+          className="w-2 h-2 rounded-full"
+          style={{ background: stateRingColor[status] }}
+        />
+        <DifficultyPips level={difficulty} />
       </div>
-      <div className="text-xs text-slate-400">{stars}</div>
+
+      <div className="text-sm font-semibold text-poe-text-primary leading-tight truncate">
+        {title}
+      </div>
+
+      <div className={`text-[10px] mt-1 uppercase tracking-wider font-mono ${statusIndicator[status].color}`}>
+        {statusIndicator[status].label}
+      </div>
+
       {status === "in_progress" && (
-        <div className="mt-2 h-1 bg-rpg-bg rounded-full overflow-hidden">
-          <div
-            className="h-full bg-gradient-to-r from-rpg-blue to-rpg-gold rounded-full transition-all"
-            style={{ width: `${progress}%` }}
+        <div className="mt-2 h-1 bg-poe-void rounded-full overflow-hidden">
+          <motion.div
+            initial={{ width: 0 }}
+            animate={{ width: `${progress}%` }}
+            transition={{ duration: 0.5, ease: "easeOut" }}
+            className="h-full rounded-full bg-gradient-to-r from-poe-progress-blue to-poe-progress-purple"
           />
         </div>
       )}
+
       <Handle
         type="source"
         position={Position.Bottom}
-        className="!bg-rpg-neon !w-3 !h-3 !border-2 !border-rpg-bg"
+        className="!w-2.5 !h-2.5 !border-2 !rounded-full !-bottom-1.5"
+        style={{
+          background: stateRingColor[status],
+          borderColor: "#0a0a18",
+        }}
       />
     </motion.div>
   );
