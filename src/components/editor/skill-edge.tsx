@@ -4,17 +4,40 @@ import { memo } from "react";
 import { BaseEdge, getBezierPath, type EdgeProps } from "@xyflow/react";
 import type { EdgeType } from "@/types";
 
-const edgeStyles: Record<
-  EdgeType,
-  { stroke: string; strokeDasharray?: string; opacity: number }
-> = {
-  prerequisite: { stroke: "#818cf8", opacity: 0.8 },
-  recommended: { stroke: "#818cf8", strokeDasharray: "8 4", opacity: 0.4 },
-  optional: { stroke: "#475569", strokeDasharray: "4 4", opacity: 0.3 },
+interface EdgeStyleDef {
+  stroke: string;
+  strokeWidth: number;
+  strokeDasharray?: string;
+  opacity: number;
+  glowColor?: string;
+  animated?: boolean;
+}
+
+const edgeStyles: Record<EdgeType, EdgeStyleDef> = {
+  prerequisite: {
+    stroke: "#c4941a",
+    strokeWidth: 2.5,
+    opacity: 0.85,
+    glowColor: "rgba(196, 148, 26, 0.3)",
+    animated: true,
+  },
+  recommended: {
+    stroke: "#818cf8",
+    strokeWidth: 1.8,
+    strokeDasharray: "8 4",
+    opacity: 0.45,
+  },
+  optional: {
+    stroke: "#404050",
+    strokeWidth: 1.2,
+    strokeDasharray: "4 4",
+    opacity: 0.25,
+  },
 };
 
 function SkillEdgeComponent(props: EdgeProps) {
   const {
+    id,
     sourceX,
     sourceY,
     targetX,
@@ -37,24 +60,37 @@ function SkillEdgeComponent(props: EdgeProps) {
 
   return (
     <>
+      {style.glowColor && (
+        <BaseEdge
+          path={edgePath}
+          style={{
+            stroke: style.glowColor,
+            strokeWidth: style.strokeWidth + 6,
+            opacity: 0.4,
+            filter: "blur(4px)",
+          }}
+        />
+      )}
+
       <BaseEdge
         path={edgePath}
         style={{
           stroke: style.stroke,
-          strokeWidth: edgeType === "prerequisite" ? 2.5 : 1.5,
+          strokeWidth: style.strokeWidth,
           strokeDasharray: style.strokeDasharray,
           opacity: style.opacity,
         }}
       />
-      {edgeType === "prerequisite" && (
+
+      {style.animated && (
         <BaseEdge
           path={edgePath}
           style={{
-            stroke: style.stroke,
-            strokeWidth: 2.5,
-            strokeDasharray: "12 12",
-            opacity: 0.6,
-            animation: "flow 2s linear infinite",
+            stroke: "#e8b828",
+            strokeWidth: 2,
+            strokeDasharray: "6 18",
+            opacity: 0.7,
+            animation: "edge-energy 2s linear infinite",
           }}
         />
       )}
