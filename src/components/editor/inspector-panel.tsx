@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import type { SkillNodeData, SubTask, Resource } from "@/types";
+import type { SkillNodeData, NodeStatus, SubTask, Resource } from "@/types";
 
 type SaveState = "idle" | "unsaved" | "saving" | "saved" | "failed";
 
@@ -12,7 +12,16 @@ interface InspectorPanelProps {
   onDelete: (nodeId: string) => void;
   onDuplicate: (nodeId: string) => void;
   onAddNode: () => void;
+  onAiEnhance: (nodeId: string | null) => void;
+  aiEnhancing: boolean;
 }
+
+const statusOptions: { value: NodeStatus; label: string; color: string }[] = [
+  { value: "locked", label: "Sealed", color: "border-poe-locked-mid text-poe-locked-mid" },
+  { value: "available", label: "Ready", color: "border-poe-gold-mid text-poe-gold-bright" },
+  { value: "in_progress", label: "Active", color: "border-poe-progress-blue text-poe-progress-blue" },
+  { value: "completed", label: "Mastered", color: "border-poe-complete-green text-poe-complete-bright" },
+];
 
 function SectionHeader({ children }: { children: React.ReactNode }) {
   return (
@@ -51,7 +60,10 @@ export function InspectorPanel({
   onDelete,
   onDuplicate,
   onAddNode,
+  onAiEnhance,
+  aiEnhancing,
 }: InspectorPanelProps) {
+  const [status, setStatus] = useState<NodeStatus>("available");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [difficulty, setDifficulty] = useState(1);
@@ -76,6 +88,7 @@ export function InspectorPanel({
     setSubTasks(node.subTasks);
     setResources(node.resources);
     setNotes(node.notes || "");
+    setStatus(node.status);
     setSaveState("idle");
     setDirty(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -97,6 +110,7 @@ export function InspectorPanel({
         difficulty,
         estimatedHours: estimatedHours ? parseFloat(estimatedHours) : null,
         progress,
+        status,
         subTasks,
         resources,
         notes: notes || null,
@@ -199,8 +213,23 @@ export function InspectorPanel({
               />
             </div>
 
-            <div className="text-xs text-poe-text-secondary">
-              Status: <span className="font-mono text-poe-gold-mid">{node.status.replace("_", " ")}</span>
+            <div className="mb-1">
+              <label className="block text-[10px] text-poe-text-dim mb-1.5 uppercase tracking-wide">Status</label>
+              <div className="flex gap-1">
+                {statusOptions.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => { setStatus(opt.value); markDirty(); }}
+                    className={`px-2 py-1 rounded border text-[10px] font-mono uppercase transition ${
+                      status === opt.value
+                        ? `${opt.color} bg-white/5`
+                        : "border-poe-border-dim text-poe-text-dim hover:border-poe-border-mid"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <SectionHeader>Progression</SectionHeader>
@@ -372,6 +401,24 @@ export function InspectorPanel({
                   : dirty
                   ? "Save Changes"
                   : "No Changes"}
+              </button>
+
+              <button
+                onClick={() => onAiEnhance(node.id)}
+                disabled={aiEnhancing}
+                className="w-full py-2 text-sm font-semibold rounded-md transition poe-btn"
+                style={{ borderColor: "#5b5ef0", color: "#818cf8" }}
+              >
+                {aiEnhancing ? "Enhancing..." : "AI Enhance This Skill"}
+              </button>
+
+              <button
+                onClick={() => onAiEnhance(null)}
+                disabled={aiEnhancing}
+                className="w-full py-1.5 text-xs rounded-md transition poe-btn"
+                style={{ borderColor: "#5b5ef0", color: "#818cf8", opacity: 0.7 }}
+              >
+                {aiEnhancing ? "Enhancing..." : "AI Enhance All Skills"}
               </button>
 
               <div className="flex gap-2">

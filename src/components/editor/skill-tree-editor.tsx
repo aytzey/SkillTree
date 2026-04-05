@@ -75,6 +75,7 @@ function EditorInner({ tree }: EditorProps) {
     y: number;
     nodeId: string;
   } | null>(null);
+  const [aiEnhancing, setAiEnhancing] = useState(false);
   const treeDataRef = useRef(tree);
   const { fitView } = useReactFlow();
 
@@ -271,6 +272,25 @@ function EditorInner({ tree }: EditorProps) {
     );
   }
 
+  async function handleAiEnhance(nodeId: string | null) {
+    setAiEnhancing(true);
+    try {
+      const res = await fetch("/api/enhance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ treeId: tree.id, nodeId }),
+      });
+      if (res.ok) {
+        // Reload the page to get fresh data
+        window.location.reload();
+      }
+    } catch {
+      // silently fail
+    } finally {
+      setAiEnhancing(false);
+    }
+  }
+
   return (
     <div className="h-screen flex flex-col bg-poe-void">
       <WorldHeader
@@ -339,6 +359,8 @@ function EditorInner({ tree }: EditorProps) {
           onDelete={handleDeleteNode}
           onDuplicate={handleDuplicateNode}
           onAddNode={handleAddNode}
+          onAiEnhance={handleAiEnhance}
+          aiEnhancing={aiEnhancing}
         />
       </div>
 

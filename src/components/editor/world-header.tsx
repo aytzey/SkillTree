@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 
 type SaveState = "idle" | "unsaved" | "saving" | "saved" | "failed";
 
@@ -57,6 +58,15 @@ export function WorldHeader({
 
       <div className="h-14 flex items-center justify-between px-5">
         <div className="flex items-center gap-4 min-w-0">
+          <Link
+            href="/dashboard"
+            className="text-poe-text-dim hover:text-poe-gold-mid transition text-sm"
+            title="Back to dashboard"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </Link>
           <h2 className="text-lg font-cinzel font-semibold text-poe-text-primary truncate max-w-xs">
             {title}
           </h2>
