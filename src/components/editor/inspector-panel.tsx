@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { computeProgressFromSubtasks } from "@/lib/status-engine";
-import type { SkillNodeData, NodeStatus, SubTask, Resource } from "@/types";
+import type { SkillNodeData, NodeStatus, SubTask, Resource, EdgeType } from "@/types";
 
 type SaveState = "idle" | "unsaved" | "saving" | "saved" | "failed";
 
@@ -20,6 +20,14 @@ interface InspectorPanelProps {
   aiEnhancing: boolean;
   canEdit: boolean;
   isReadOnly: boolean;
+  // New props for connections
+  allNodes: SkillNodeData[];
+  allEdges: { id: string; sourceNodeId: string; targetNodeId: string; type: string }[];
+  onAddNodeWithEdge: (direction: "above" | "below", anchorNodeId: string, edgeType: EdgeType) => void;
+  onLinkExistingNode: (direction: "above" | "below", anchorNodeId: string, targetNodeId: string, edgeType: EdgeType) => void;
+  onDeleteEdge: (edgeId: string) => void;
+  onStartPickMode: (direction: "above" | "below", anchorNodeId: string) => void;
+  pickModeActive: boolean;
 }
 
 const statusOptions: { value: NodeStatus; label: string; color: string }[] = [
@@ -73,6 +81,237 @@ function EmptyState({
   );
 }
 
+const edgeTypeChoices: { value: EdgeType; label: string; color: string; dot: string }[] = [
+  { value: "prerequisite", label: "Prerequisite", color: "text-poe-gold-bright border-poe-gold-mid", dot: "bg-poe-gold-mid" },
+  { value: "recommended", label: "Recommended", color: "text-poe-energy-blue border-poe-energy-blue", dot: "bg-poe-energy-blue" },
+  { value: "optional", label: "Optional", color: "text-poe-text-dim border-poe-border-mid", dot: "bg-poe-text-dim" },
+];
+
+function ConnectionsSection({
+  node,
+  allNodes,
+  allEdges,
+  disabled,
+  onAddNodeWithEdge,
+  onLinkExistingNode,
+  onDeleteEdge,
+  onStartPickMode,
+  pickModeActive,
+}: {
+  node: SkillNodeData;
+  allNodes: SkillNodeData[];
+  allEdges: { id: string; sourceNodeId: string; targetNodeId: string; type: string }[];
+  disabled: boolean;
+  onAddNodeWithEdge: (direction: "above" | "below", anchorNodeId: string, edgeType: EdgeType) => void;
+  onLinkExistingNode: (direction: "above" | "below", anchorNodeId: string, targetNodeId: string, edgeType: EdgeType) => void;
+  onDeleteEdge: (edgeId: string) => void;
+  onStartPickMode: (direction: "above" | "below", anchorNodeId: string) => void;
+  pickModeActive: boolean;
+}) {
+  const [linkDropdown, setLinkDropdown] = useState<{ direction: "above" | "below"; search: string } | null>(null);
+  const [edgeTypePopup, setEdgeTypePopup] = useState<{
+    direction: "above" | "below";
+    targetNodeId?: string;
+    mode: "new" | "link";
+  } | null>(null);
+
+  // Above = edges where this node is the TARGET (sourceNodeId points to prerequisites)
+  const aboveEdges = allEdges.filter((e) => e.targetNodeId === node.id);
+  // Below = edges where this node is the SOURCE (targetNodeId points to what this leads to)
+  const belowEdges = allEdges.filter((e) => e.sourceNodeId === node.id);
+
+  const connectedNodeIds = new Set<string>([
+    node.id,
+    ...aboveEdges.map((e) => e.sourceNodeId),
+    ...belowEdges.map((e) => e.targetNodeId),
+  ]);
+
+  const availableNodes = allNodes.filter((n) => !connectedNodeIds.has(n.id));
+  const filteredNodes = linkDropdown
+    ? availableNodes.filter((n) =>
+        n.title.toLowerCase().includes(linkDropdown.search.toLowerCase())
+      )
+    : [];
+
+  function getNodeTitle(nodeId: string) {
+    return allNodes.find((n) => n.id === nodeId)?.title || "Unknown";
+  }
+
+  function getDotClass(type: string) {
+    const choice = edgeTypeChoices.find((c) => c.value === type);
+    return choice?.dot || "bg-poe-text-dim";
+  }
+
+  function handleSelectNodeFromDropdown(targetNodeId: string) {
+    if (!linkDropdown) return;
+    setEdgeTypePopup({ direction: linkDropdown.direction, targetNodeId, mode: "link" });
+    setLinkDropdown(null);
+  }
+
+  function handleAddNew(direction: "above" | "below") {
+    setEdgeTypePopup({ direction, mode: "new" });
+    setLinkDropdown(null);
+  }
+
+  function handleEdgeTypeSelect(edgeType: EdgeType) {
+    if (!edgeTypePopup) return;
+    if (edgeTypePopup.mode === "new") {
+      onAddNodeWithEdge(edgeTypePopup.direction, node.id, edgeType);
+    } else if (edgeTypePopup.mode === "link" && edgeTypePopup.targetNodeId) {
+      onLinkExistingNode(edgeTypePopup.direction, node.id, edgeTypePopup.targetNodeId, edgeType);
+    }
+    setEdgeTypePopup(null);
+  }
+
+  function handlePickOnCanvas(direction: "above" | "below") {
+    onStartPickMode(direction, node.id);
+    setLinkDropdown(null);
+  }
+
+  function renderDirection(direction: "above" | "below") {
+    const edges = direction === "above" ? aboveEdges : belowEdges;
+    const label = direction === "above" ? "Above (Prerequisites)" : "Below (Leads to)";
+
+    return (
+      <div className="mb-3">
+        <div className="text-[10px] text-poe-text-dim uppercase tracking-wide font-mono mb-1.5">
+          {label}
+        </div>
+
+        {/* Connected edges list */}
+        <div className="space-y-1 mb-2">
+          {edges.length === 0 ? (
+            <div className="text-xs text-poe-text-dim italic">None</div>
+          ) : (
+            edges.map((edge) => {
+              const connectedId = direction === "above" ? edge.sourceNodeId : edge.targetNodeId;
+              return (
+                <div key={edge.id} className="flex items-center gap-2 group">
+                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${getDotClass(edge.type)}`} />
+                  <span className="text-xs text-poe-text-secondary flex-1 truncate">
+                    {getNodeTitle(connectedId)}
+                  </span>
+                  {!disabled && (
+                    <button
+                      onClick={() => onDeleteEdge(edge.id)}
+                      className="text-poe-danger text-xs opacity-0 group-hover:opacity-100 transition"
+                      title="Remove connection"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Action buttons */}
+        {!disabled && (
+          <div className="flex gap-1.5">
+            <button
+              onClick={() => handleAddNew(direction)}
+              className="poe-btn px-2 py-1 text-[10px] flex-1"
+            >
+              + Add {direction === "above" ? "Above" : "Below"}
+            </button>
+            <button
+              onClick={() =>
+                setLinkDropdown(
+                  linkDropdown?.direction === direction
+                    ? null
+                    : { direction, search: "" }
+                )
+              }
+              className="poe-btn px-2 py-1 text-[10px] flex-1"
+            >
+              🔗 Link Existing
+            </button>
+          </div>
+        )}
+
+        {/* Link existing dropdown */}
+        {linkDropdown?.direction === direction && (
+          <div className="mt-2 border border-poe-border-dim rounded bg-poe-panel p-2 space-y-2">
+            <input
+              value={linkDropdown.search}
+              onChange={(e) => setLinkDropdown({ ...linkDropdown, search: e.target.value })}
+              placeholder="Search nodes..."
+              className="poe-input w-full px-2 py-1 text-xs"
+              autoFocus
+            />
+            <div className="max-h-32 overflow-y-auto poe-scrollbar space-y-0.5">
+              {filteredNodes.length === 0 ? (
+                <div className="text-[10px] text-poe-text-dim italic px-1 py-1">
+                  No available nodes
+                </div>
+              ) : (
+                filteredNodes.map((n) => (
+                  <button
+                    key={n.id}
+                    onClick={() => handleSelectNodeFromDropdown(n.id)}
+                    className="w-full text-left px-2 py-1.5 text-xs text-poe-text-secondary hover:bg-white/5 rounded transition truncate"
+                  >
+                    {n.title}
+                  </button>
+                ))
+              )}
+            </div>
+            <button
+              onClick={() => handlePickOnCanvas(direction)}
+              className="w-full poe-btn px-2 py-1 text-[10px]"
+            >
+              🎯 Pick on Canvas
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative">
+      {/* Pick mode indicator */}
+      {pickModeActive && (
+        <div className="mb-3 px-2 py-1.5 rounded border border-poe-energy-blue/50 bg-poe-energy-blue/10 text-[10px] text-poe-energy-blue text-center font-mono">
+          Click a node on the canvas to connect…
+        </div>
+      )}
+
+      {renderDirection("above")}
+      {renderDirection("below")}
+
+      {/* Edge type popup overlay */}
+      {edgeTypePopup && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/60 rounded">
+          <div className="bg-poe-panel border border-poe-border-dim rounded p-3 w-full mx-2">
+            <div className="text-[10px] text-poe-text-dim uppercase tracking-wide font-mono mb-2 text-center">
+              Connection Type
+            </div>
+            <div className="flex flex-col gap-1.5">
+              {edgeTypeChoices.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => handleEdgeTypeSelect(opt.value)}
+                  className={`px-3 py-2 rounded border text-left transition ${opt.color} hover:bg-white/5`}
+                >
+                  <div className="text-xs font-mono uppercase">{opt.label}</div>
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setEdgeTypePopup(null)}
+              className="w-full mt-2 text-[10px] text-poe-text-dim hover:text-poe-text-secondary transition text-center py-1"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function InspectorPanel({
   node,
   selectedEdge,
@@ -86,6 +325,13 @@ export function InspectorPanel({
   aiEnhancing,
   canEdit,
   isReadOnly,
+  allNodes,
+  allEdges,
+  onAddNodeWithEdge,
+  onLinkExistingNode,
+  onDeleteEdge,
+  onStartPickMode,
+  pickModeActive,
 }: InspectorPanelProps) {
   const [status, setStatus] = useState<NodeStatus>("available");
   const [title, setTitle] = useState("");
@@ -570,6 +816,27 @@ export function InspectorPanel({
                 className="poe-input w-full px-3 py-2 text-sm resize-none"
               />
             </div>
+
+            {/* Connections Section */}
+            <SectionHeader icon={
+              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
+                <polyline points="15 3 21 3 21 9" />
+                <line x1="10" y1="14" x2="21" y2="3" />
+              </svg>
+            }>Connections</SectionHeader>
+
+            <ConnectionsSection
+              node={node}
+              allNodes={allNodes}
+              allEdges={allEdges}
+              disabled={inputsDisabled}
+              onAddNodeWithEdge={onAddNodeWithEdge}
+              onLinkExistingNode={onLinkExistingNode}
+              onDeleteEdge={onDeleteEdge}
+              onStartPickMode={onStartPickMode}
+              pickModeActive={pickModeActive}
+            />
 
             {/* Actions Section */}
             <SectionHeader icon={
