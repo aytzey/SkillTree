@@ -37,7 +37,6 @@ const edgeStyles: Record<EdgeType, EdgeStyleDef> = {
 
 function SkillEdgeComponent(props: EdgeProps) {
   const {
-    id,
     sourceX,
     sourceY,
     targetX,

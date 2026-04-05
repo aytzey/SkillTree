@@ -78,6 +78,7 @@ export function InspectorPanel({
     setNotes(node.notes || "");
     setSaveState("idle");
     setDirty(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [node?.id]);
 
   function markDirty() {

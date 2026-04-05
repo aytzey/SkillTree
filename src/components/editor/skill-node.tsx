@@ -50,7 +50,7 @@ function DifficultyPips({ level }: { level: number }) {
   );
 }
 
-function SkillNodeComponent({ data, id }: NodeProps) {
+function SkillNodeComponent({ data }: NodeProps) {
   const { title, status, difficulty, progress, selected } =
     data as unknown as SkillNodePayload;
 
