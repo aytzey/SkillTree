@@ -15,36 +15,60 @@ interface TreeCardProps {
 
 export function TreeCard({ id, title, description, nodeCount, progress, updatedAt, isPublic }: TreeCardProps) {
   const timeAgo = getTimeAgo(new Date(updatedAt));
+  const isComplete = progress === 100;
 
   return (
     <Link href={`/tree/${id}`}>
       <motion.div
-        whileHover={{ scale: 1.02, borderColor: "rgba(245, 158, 11, 0.5)" }}
-        className="bg-rpg-card border border-rpg-border rounded-xl p-5 cursor-pointer transition-colors"
+        whileHover={{ y: -4, boxShadow: "0 8px 40px rgba(196,148,26,0.12)" }}
+        transition={{ duration: 0.2, ease: "easeOut" }}
+        className="relative border border-poe-border-dim rounded-lg p-5 cursor-pointer transition-colors hover:border-poe-gold-dim group overflow-hidden"
+        style={{ background: "linear-gradient(180deg, #141430 0%, #0e0e24 100%)" }}
       >
+        {/* Subtle top accent */}
+        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-poe-gold-dim/30 to-transparent" />
+
         <div className="flex items-start justify-between mb-3">
-          <h3 className="text-lg font-semibold text-white truncate">{title}</h3>
+          <h3 className="font-cinzel text-base font-semibold text-poe-text-primary group-hover:text-poe-gold-bright transition truncate">
+            {title}
+          </h3>
           {isPublic && (
-            <span className="text-xs bg-rpg-green/20 text-rpg-green px-2 py-0.5 rounded-full ml-2 shrink-0">Public</span>
+            <span className="text-[10px] font-mono uppercase tracking-wider bg-poe-complete-green/10 text-poe-complete-bright border border-poe-complete-green/20 px-2 py-0.5 rounded ml-2 shrink-0">
+              Public
+            </span>
           )}
         </div>
-        {description && <p className="text-sm text-slate-400 mb-3 line-clamp-2">{description}</p>}
-        <div className="flex items-center gap-4 text-xs text-slate-500">
+
+        {description && (
+          <p className="text-xs text-poe-text-dim mb-3 line-clamp-2 leading-relaxed">{description}</p>
+        )}
+
+        <div className="flex items-center gap-4 text-[10px] font-mono text-poe-text-dim uppercase tracking-wide mb-4">
           <span>{nodeCount} nodes</span>
           <span>{timeAgo}</span>
         </div>
-        <div className="mt-3 h-1.5 bg-rpg-bg rounded-full overflow-hidden">
+
+        {/* Progress bar */}
+        <div className="h-1 bg-poe-void rounded-full overflow-hidden">
           <motion.div
             className="h-full rounded-full"
             style={{
-              background: progress === 100 ? "var(--glow-green)" : "linear-gradient(90deg, var(--glow-blue), var(--glow-gold))",
+              background: isComplete
+                ? "linear-gradient(90deg, #0d9668, #34d399)"
+                : "linear-gradient(90deg, #8b6914, #e8b828)",
             }}
             initial={{ width: 0 }}
             animate={{ width: `${progress}%` }}
-            transition={{ duration: 0.8, ease: "easeOut" }}
+            transition={{ duration: 1, ease: "easeOut" }}
           />
         </div>
-        <div className="text-right text-xs text-slate-500 mt-1">{progress}%</div>
+        <div className="text-right text-[10px] font-mono text-poe-text-dim mt-1.5">
+          {isComplete ? (
+            <span className="text-poe-complete-bright">Mastered</span>
+          ) : (
+            `${progress}%`
+          )}
+        </div>
       </motion.div>
     </Link>
   );

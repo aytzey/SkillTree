@@ -46,14 +46,14 @@ export function RegisterForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 w-full max-w-sm">
+    <form onSubmit={handleSubmit} className="space-y-5 w-full max-w-sm">
       {error && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-400 text-sm">
+        <div className="border border-poe-danger/30 rounded-md p-3 text-poe-danger text-sm bg-poe-danger/5">
           {error}
         </div>
       )}
       <div>
-        <label htmlFor="name" className="block text-sm text-rpg-gold mb-1">
+        <label htmlFor="name" className="block text-[10px] text-poe-text-dim mb-1.5 uppercase tracking-wider font-mono">
           Name
         </label>
         <input
@@ -63,11 +63,11 @@ export function RegisterForm() {
           required
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="w-full bg-rpg-bg-secondary border border-rpg-border rounded-lg px-3 py-2 text-white focus:outline-none focus:border-rpg-gold transition"
+          className="poe-input w-full px-4 py-3 text-sm"
         />
       </div>
       <div>
-        <label htmlFor="email" className="block text-sm text-rpg-gold mb-1">
+        <label htmlFor="email" className="block text-[10px] text-poe-text-dim mb-1.5 uppercase tracking-wider font-mono">
           Email
         </label>
         <input
@@ -77,12 +77,12 @@ export function RegisterForm() {
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="w-full bg-rpg-bg-secondary border border-rpg-border rounded-lg px-3 py-2 text-white focus:outline-none focus:border-rpg-gold transition"
+          className="poe-input w-full px-4 py-3 text-sm"
         />
       </div>
       <div>
-        <label htmlFor="password" className="block text-sm text-rpg-gold mb-1">
-          Password (min 6 chars)
+        <label htmlFor="password" className="block text-[10px] text-poe-text-dim mb-1.5 uppercase tracking-wider font-mono">
+          Password <span className="text-poe-text-dim">(min 6 chars)</span>
         </label>
         <input
           id="password"
@@ -92,15 +92,15 @@ export function RegisterForm() {
           minLength={6}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="w-full bg-rpg-bg-secondary border border-rpg-border rounded-lg px-3 py-2 text-white focus:outline-none focus:border-rpg-gold transition"
+          className="poe-input w-full px-4 py-3 text-sm"
         />
       </div>
       <button
         type="submit"
         disabled={loading}
-        className="w-full bg-rpg-gold/20 border border-rpg-gold text-rpg-gold rounded-lg py-2 font-medium hover:bg-rpg-gold/30 transition disabled:opacity-50"
+        className="w-full poe-btn-gold poe-btn py-3 font-cinzel font-semibold tracking-wider disabled:opacity-50"
       >
-        {loading ? "Creating account..." : "Create Account"}
+        {loading ? "Forging identity..." : "Begin"}
       </button>
     </form>
   );

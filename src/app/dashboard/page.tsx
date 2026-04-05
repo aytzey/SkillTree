@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { motion } from "framer-motion";
 import { TreeCard } from "@/components/dashboard/tree-card";
 
@@ -33,38 +34,73 @@ export default function DashboardPage() {
   }, []);
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-10">
-      <div className="flex items-center justify-between mb-8">
-        <h1 className="text-3xl font-bold text-rpg-gold">My Skill Trees</h1>
-        <button
-          onClick={() => router.push("/tree/new")}
-          className="bg-rpg-gold/20 border border-rpg-gold text-rpg-gold rounded-lg px-4 py-2 text-sm font-medium hover:bg-rpg-gold/30 transition"
-        >
-          + New Tree
-        </button>
+    <div className="min-h-screen bg-poe-void">
+      {/* Header bar */}
+      <div className="poe-header">
+        <div className="poe-ornate-border" />
+        <div className="h-14 flex items-center justify-between px-6 max-w-6xl mx-auto">
+          <Link href="/" className="font-cinzel text-lg font-bold text-poe-gold-bright tracking-wider">
+            SKILLTREE
+          </Link>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => router.push("/tree/new")}
+              className="poe-btn-gold poe-btn px-4 py-1.5 text-sm font-semibold"
+            >
+              + New Tree
+            </button>
+          </div>
+        </div>
+        <div className="poe-ornate-border" />
       </div>
 
-      {loading ? (
-        <div className="text-center text-slate-400 py-20">Loading...</div>
-      ) : trees.length === 0 ? (
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center py-20">
-          <p className="text-slate-400 text-lg mb-4">No skill trees yet</p>
-          <button
-            onClick={() => router.push("/tree/new")}
-            className="bg-rpg-gold/20 border border-rpg-gold text-rpg-gold rounded-lg px-6 py-3 font-medium hover:bg-rpg-gold/30 transition"
+      <div className="max-w-6xl mx-auto px-6 py-12">
+        <motion.h1
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="font-cinzel text-3xl font-bold text-poe-text-primary mb-2"
+        >
+          Your Skill Trees
+        </motion.h1>
+        <p className="text-sm text-poe-text-dim mb-10">Forge your path. Master the journey.</p>
+
+        {loading ? (
+          <div className="text-center text-poe-text-dim py-20 font-mono text-sm">Loading...</div>
+        ) : trees.length === 0 ? (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex flex-col items-center py-24"
           >
-            Create Your First Tree
-          </button>
-        </motion.div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {trees.map((tree, i) => (
-            <motion.div key={tree.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
-              <TreeCard {...tree} />
-            </motion.div>
-          ))}
-        </div>
-      )}
+            <div className="w-24 h-24 rounded-full border border-poe-border-dim flex items-center justify-center mb-6">
+              <svg className="w-10 h-10 text-poe-gold-dim" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+            </div>
+            <p className="text-poe-text-secondary text-lg mb-2 font-cinzel">No trees forged yet</p>
+            <p className="text-poe-text-dim text-sm mb-8">Begin your journey by creating your first skill tree</p>
+            <button
+              onClick={() => router.push("/tree/new")}
+              className="poe-btn-gold poe-btn px-8 py-3 font-cinzel font-semibold tracking-wider"
+            >
+              Forge Your First Tree
+            </button>
+          </motion.div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {trees.map((tree, i) => (
+              <motion.div
+                key={tree.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.08, ease: "easeOut" }}
+              >
+                <TreeCard {...tree} />
+              </motion.div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
