@@ -1,19 +1,25 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { computeProgressFromSubtasks } from "@/lib/status-engine";
 import type { SkillNodeData, NodeStatus, SubTask, Resource } from "@/types";
 
 type SaveState = "idle" | "unsaved" | "saving" | "saved" | "failed";
 
 interface InspectorPanelProps {
   node: SkillNodeData | null;
+  selectedEdge: { id: string; type: string } | null;
+  onUpdateEdgeType: (edgeId: string, type: string) => void;
   onUpdate: (node: SkillNodeData) => Promise<void>;
   onDelete: (nodeId: string) => void;
   onDuplicate: (nodeId: string) => void;
   onAddNode: () => void;
   onAiEnhance: (nodeId: string | null) => void;
+  onAiSuggest: (nodeId: string, direction: "above" | "below" | "parallel") => void;
   aiEnhancing: boolean;
+  canEdit: boolean;
+  isReadOnly: boolean;
 }
 
 const statusOptions: { value: NodeStatus; label: string; color: string }[] = [
@@ -23,18 +29,25 @@ const statusOptions: { value: NodeStatus; label: string; color: string }[] = [
   { value: "completed", label: "Mastered", color: "border-poe-complete-green text-poe-complete-bright" },
 ];
 
-function SectionHeader({ children }: { children: React.ReactNode }) {
+function SectionHeader({ children, icon }: { children: React.ReactNode; icon?: React.ReactNode }) {
   return (
     <>
       <div className="poe-section-divider my-4" />
-      <h4 className="text-[10px] uppercase tracking-[0.15em] text-poe-text-dim font-mono mb-3">
+      <h4 className="text-[10px] uppercase tracking-[0.15em] text-poe-text-dim font-mono mb-3 flex items-center gap-2">
+        {icon && <span className="text-poe-gold-dim">{icon}</span>}
         {children}
       </h4>
     </>
   );
 }
 
-function EmptyState({ onAddNode }: { onAddNode: () => void }) {
+function EmptyState({
+  onAddNode,
+  canCreate,
+}: {
+  onAddNode: () => void;
+  canCreate: boolean;
+}) {
   return (
     <div className="flex flex-col items-center justify-center h-full text-center px-6">
       <div className="w-16 h-16 rounded-full border border-poe-border-dim flex items-center justify-center mb-4">
@@ -44,24 +57,35 @@ function EmptyState({ onAddNode }: { onAddNode: () => void }) {
       </div>
       <p className="text-sm text-poe-text-secondary mb-1">No node selected</p>
       <p className="text-xs text-poe-text-dim mb-5">Click a node on the canvas to inspect it</p>
-      <button
-        onClick={onAddNode}
-        className="poe-btn px-4 py-2 text-xs"
-      >
-        + Create New Node
-      </button>
+      {canCreate ? (
+        <button
+          onClick={onAddNode}
+          className="poe-btn px-4 py-2 text-xs"
+        >
+          + Create New Node
+        </button>
+      ) : (
+        <p className="text-[11px] text-poe-text-dim max-w-[180px]">
+          Read-only mode is active. Select a node to inspect its details.
+        </p>
+      )}
     </div>
   );
 }
 
 export function InspectorPanel({
   node,
+  selectedEdge,
+  onUpdateEdgeType,
   onUpdate,
   onDelete,
   onDuplicate,
   onAddNode,
   onAiEnhance,
+  onAiSuggest,
   aiEnhancing,
+  canEdit,
+  isReadOnly,
 }: InspectorPanelProps) {
   const [status, setStatus] = useState<NodeStatus>("available");
   const [title, setTitle] = useState("");
@@ -76,10 +100,14 @@ export function InspectorPanel({
   const [newResTitle, setNewResTitle] = useState("");
   const [newResUrl, setNewResUrl] = useState("");
   const [saveState, setSaveState] = useState<SaveState>("idle");
-  const [dirty, setDirty] = useState(false);
+  const [descExpanded, setDescExpanded] = useState(false);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadedNodeIdRef = useRef<string | null>(null);
+  const inputsDisabled = !canEdit || isReadOnly;
 
   useEffect(() => {
     if (!node) return;
+    loadedNodeIdRef.current = node.id;
     setTitle(node.title);
     setDescription(node.description || "");
     setDifficulty(node.difficulty);
@@ -90,17 +118,66 @@ export function InspectorPanel({
     setNotes(node.notes || "");
     setStatus(node.status);
     setSaveState("idle");
-    setDirty(false);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [node?.id]);
 
-  function markDirty() {
-    setDirty(true);
-    setSaveState("unsaved");
-  }
+  // Auto-save with debounce
+  useEffect(() => {
+    if (!node || loadedNodeIdRef.current !== node.id || inputsDisabled) return;
 
-  async function save() {
-    if (!node) return;
+    const currentData = JSON.stringify({
+      title, description, difficulty, estimatedHours, progress, status,
+      subTasks, resources, notes,
+    });
+    const originalData = JSON.stringify({
+      title: node.title,
+      description: node.description || "",
+      difficulty: node.difficulty,
+      estimatedHours: node.estimatedHours?.toString() || "",
+      progress: node.progress,
+      status: node.status,
+      subTasks: node.subTasks,
+      resources: node.resources,
+      notes: node.notes || "",
+    });
+
+    if (currentData === originalData) return;
+
+    setSaveState("unsaved");
+
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(async () => {
+      setSaveState("saving");
+      try {
+        await onUpdate({
+          ...node,
+          title,
+          description: description || null,
+          difficulty,
+          estimatedHours: estimatedHours ? parseFloat(estimatedHours) : null,
+          progress,
+          status,
+          subTasks,
+          resources,
+          notes: notes || null,
+        });
+        setSaveState("saved");
+        setTimeout(() => setSaveState("idle"), 1500);
+      } catch {
+        setSaveState("failed");
+      }
+    }, 1500);
+
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [title, description, difficulty, estimatedHours, progress, status, subTasks, resources, notes, node, inputsDisabled, onUpdate]);
+
+  // --- Manual save (instant) ---
+  async function saveNow() {
+    if (!node || inputsDisabled) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     setSaveState("saving");
     try {
       await onUpdate({
@@ -116,43 +193,92 @@ export function InspectorPanel({
         notes: notes || null,
       });
       setSaveState("saved");
-      setDirty(false);
-      setTimeout(() => setSaveState("idle"), 2000);
+      setTimeout(() => setSaveState("idle"), 1500);
     } catch {
       setSaveState("failed");
     }
   }
 
+  // --- Subtask handlers with progress sync ---
   function toggleSubTask(index: number) {
-    setSubTasks(subTasks.map((t, i) => (i === index ? { ...t, done: !t.done } : t)));
-    markDirty();
+    if (inputsDisabled) return;
+    const updated = subTasks.map((t, i) => (i === index ? { ...t, done: !t.done } : t));
+    setSubTasks(updated);
+    const computed = computeProgressFromSubtasks(updated);
+    if (computed >= 0) setProgress(computed);
   }
 
   function addSubTask() {
+    if (inputsDisabled) return;
     if (!newSubTask.trim()) return;
-    setSubTasks([...subTasks, { title: newSubTask.trim(), done: false }]);
+    const updated = [...subTasks, { title: newSubTask.trim(), done: false }];
+    setSubTasks(updated);
     setNewSubTask("");
-    markDirty();
+    const computed = computeProgressFromSubtasks(updated);
+    if (computed >= 0) setProgress(computed);
   }
 
   function removeSubTask(index: number) {
-    setSubTasks(subTasks.filter((_, i) => i !== index));
-    markDirty();
+    if (inputsDisabled) return;
+    const updated = subTasks.filter((_, i) => i !== index);
+    setSubTasks(updated);
+    const computed = computeProgressFromSubtasks(updated);
+    if (computed >= 0) setProgress(computed);
   }
 
   function addResource() {
+    if (inputsDisabled) return;
     if (!newResTitle.trim() || !newResUrl.trim()) return;
     setResources([...resources, { title: newResTitle.trim(), url: newResUrl.trim() }]);
     setNewResTitle("");
     setNewResUrl("");
-    markDirty();
   }
 
   function removeResource(index: number) {
+    if (inputsDisabled) return;
     setResources(resources.filter((_, i) => i !== index));
-    markDirty();
   }
 
+  // --- Edge editor view ---
+  if (!node && selectedEdge) {
+    const edgeTypeOptions = [
+      { value: "prerequisite", label: "Prerequisite", desc: "Must complete first", color: "text-poe-gold-bright border-poe-gold-mid" },
+      { value: "recommended", label: "Recommended", desc: "Suggested path", color: "text-poe-energy-blue border-poe-energy-blue" },
+      { value: "optional", label: "Optional", desc: "Nice to have", color: "text-poe-text-dim border-poe-border-mid" },
+    ];
+
+    return (
+      <div className="poe-inspector w-80 h-full flex flex-col">
+        <div className="px-4 py-3 border-b border-poe-border-dim">
+          <h3 className="text-sm font-cinzel font-semibold text-poe-gold-bright uppercase tracking-wider">
+            Edge
+          </h3>
+        </div>
+        <div className="p-4">
+          <label className="block text-[10px] text-poe-text-dim mb-2 uppercase tracking-wide">Connection Type</label>
+          <div className="flex flex-col gap-1.5">
+            {edgeTypeOptions.map((opt) => (
+              <button
+                key={opt.value}
+                  onClick={() => !inputsDisabled && onUpdateEdgeType(selectedEdge.id, opt.value)}
+                  disabled={inputsDisabled}
+                  className={`px-3 py-2.5 rounded border text-left transition ${
+                    selectedEdge.type === opt.value
+                      ? `${opt.color} bg-white/5`
+                      : "border-poe-border-dim text-poe-text-dim hover:border-poe-border-mid"
+                } ${inputsDisabled ? "opacity-60 cursor-not-allowed" : ""}`}
+              >
+                <div className="text-xs font-mono uppercase">{opt.label}</div>
+                <div className="text-[10px] text-poe-text-dim mt-0.5">{opt.desc}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // --- Empty state ---
   if (!node) {
     return (
       <div className="poe-inspector w-80 h-full flex flex-col">
@@ -162,22 +288,31 @@ export function InspectorPanel({
           </h3>
         </div>
         <div className="flex-1">
-          <EmptyState onAddNode={onAddNode} />
+          <EmptyState onAddNode={onAddNode} canCreate={canEdit && !isReadOnly} />
         </div>
       </div>
     );
   }
 
+  // --- Node inspector ---
   return (
     <div className="poe-inspector w-80 h-full flex flex-col">
       <div className="px-4 py-3 border-b border-poe-border-dim flex items-center justify-between">
         <h3 className="text-sm font-cinzel font-semibold text-poe-gold-bright uppercase tracking-wider">
           Codex
         </h3>
-        <div className="flex items-center gap-2">
-          {dirty && (
-            <span className="text-[10px] text-poe-gold-mid font-mono">unsaved</span>
-          )}
+        <div className={`text-[10px] font-mono transition-colors ${
+          saveState === "saving" ? "text-poe-progress-blue" :
+          saveState === "saved" ? "text-poe-complete-bright" :
+          saveState === "failed" ? "text-poe-danger" :
+          saveState === "unsaved" ? "text-poe-gold-mid" :
+          "text-poe-text-dim"
+        }`}>
+          {saveState === "saving" ? "saving..." :
+           saveState === "saved" ? "saved" :
+           saveState === "failed" ? "failed" :
+           saveState === "unsaved" ? "unsaved" :
+           ""}
         </div>
       </div>
 
@@ -190,7 +325,14 @@ export function InspectorPanel({
             exit={{ opacity: 0, x: -20 }}
             transition={{ duration: 0.2 }}
           >
-            <h4 className="text-[10px] uppercase tracking-[0.15em] text-poe-text-dim font-mono mb-3">
+            {/* Identity Section */}
+            <h4 className="text-[10px] uppercase tracking-[0.15em] text-poe-text-dim font-mono mb-3 flex items-center gap-2">
+              <span className="text-poe-gold-dim">
+                <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+                  <circle cx="12" cy="7" r="4" />
+                </svg>
+              </span>
               Identity
             </h4>
 
@@ -198,18 +340,40 @@ export function InspectorPanel({
               <label className="block text-[10px] text-poe-text-dim mb-1 uppercase tracking-wide">Title</label>
               <input
                 value={title}
-                onChange={(e) => { setTitle(e.target.value); markDirty(); }}
+                onChange={(e) => setTitle(e.target.value)}
+                disabled={inputsDisabled}
                 className="poe-input w-full px-3 py-2 text-sm"
               />
             </div>
 
             <div className="mb-3">
-              <label className="block text-[10px] text-poe-text-dim mb-1 uppercase tracking-wide">Description</label>
+              <label className="flex items-center justify-between text-[10px] text-poe-text-dim mb-1 uppercase tracking-wide">
+                <span>Description</span>
+                <button
+                  type="button"
+                  onClick={() => setDescExpanded((prev) => !prev)}
+                  className="text-poe-text-dim hover:text-poe-gold-mid transition"
+                  title={descExpanded ? "Collapse" : "Expand"}
+                >
+                  <svg
+                    className={`w-3 h-3 transition-transform ${descExpanded ? "rotate-180" : ""}`}
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                  >
+                    <path d="M6 9l6 6 6-6" />
+                  </svg>
+                </button>
+              </label>
               <textarea
                 value={description}
-                onChange={(e) => { setDescription(e.target.value); markDirty(); }}
-                rows={2}
-                className="poe-input w-full px-3 py-2 text-sm resize-none"
+                onChange={(e) => setDescription(e.target.value)}
+                rows={descExpanded ? 10 : 2}
+                disabled={inputsDisabled}
+                className={`poe-input w-full px-3 py-2 text-sm resize-none transition-all duration-200 ${
+                  !descExpanded ? "overflow-hidden" : "overflow-y-auto poe-scrollbar"
+                }`}
               />
             </div>
 
@@ -219,12 +383,13 @@ export function InspectorPanel({
                 {statusOptions.map((opt) => (
                   <button
                     key={opt.value}
-                    onClick={() => { setStatus(opt.value); markDirty(); }}
+                    onClick={() => !inputsDisabled && setStatus(opt.value)}
+                    disabled={inputsDisabled}
                     className={`px-2 py-1 rounded border text-[10px] font-mono uppercase transition ${
                       status === opt.value
                         ? `${opt.color} bg-white/5`
                         : "border-poe-border-dim text-poe-text-dim hover:border-poe-border-mid"
-                    }`}
+                    } ${inputsDisabled ? "opacity-60 cursor-not-allowed" : ""}`}
                   >
                     {opt.label}
                   </button>
@@ -232,7 +397,12 @@ export function InspectorPanel({
               </div>
             </div>
 
-            <SectionHeader>Progression</SectionHeader>
+            {/* Progression Section */}
+            <SectionHeader icon={
+              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+              </svg>
+            }>Progression</SectionHeader>
 
             <div className="mb-3">
               <label className="block text-[10px] text-poe-text-dim mb-1.5 uppercase tracking-wide">Difficulty</label>
@@ -240,12 +410,13 @@ export function InspectorPanel({
                 {[1, 2, 3, 4, 5].map((level) => (
                   <button
                     key={level}
-                    onClick={() => { setDifficulty(level); markDirty(); }}
+                    onClick={() => !inputsDisabled && setDifficulty(level)}
+                    disabled={inputsDisabled}
                     className={`w-6 h-6 rounded border text-xs font-mono transition ${
                       level <= difficulty
                         ? "bg-poe-gold-mid/20 border-poe-gold-mid text-poe-gold-bright"
                         : "bg-transparent border-poe-border-dim text-poe-text-dim"
-                    }`}
+                    } ${inputsDisabled ? "opacity-60 cursor-not-allowed" : ""}`}
                   >
                     {level}
                   </button>
@@ -260,9 +431,10 @@ export function InspectorPanel({
               <input
                 type="number"
                 value={estimatedHours}
-                onChange={(e) => { setEstimatedHours(e.target.value); markDirty(); }}
+                onChange={(e) => setEstimatedHours(e.target.value)}
                 min="0"
                 step="0.5"
+                disabled={inputsDisabled}
                 className="poe-input w-full px-3 py-2 text-sm"
                 placeholder="0"
               />
@@ -271,18 +443,30 @@ export function InspectorPanel({
             <div className="mb-1">
               <label className="block text-[10px] text-poe-text-dim mb-1 uppercase tracking-wide">
                 Progress: <span className="text-poe-text-secondary">{progress}%</span>
+                {subTasks.length > 0 && (
+                  <span className="text-poe-text-dim ml-1">(auto)</span>
+                )}
               </label>
               <input
                 type="range"
                 value={progress}
-                onChange={(e) => { setProgress(parseInt(e.target.value)); markDirty(); }}
+                onChange={(e) => setProgress(parseInt(e.target.value))}
                 min="0"
                 max="100"
-                className="w-full accent-poe-gold-mid"
+                disabled={inputsDisabled || subTasks.length > 0}
+                className={`w-full accent-poe-gold-mid ${
+                  inputsDisabled || subTasks.length > 0 ? "opacity-50 cursor-not-allowed" : ""
+                }`}
               />
             </div>
 
-            <SectionHeader>Content</SectionHeader>
+            {/* Content Section */}
+            <SectionHeader icon={
+              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+              </svg>
+            }>Content</SectionHeader>
 
             <div className="mb-4">
               <label className="block text-[10px] text-poe-text-dim mb-2 uppercase tracking-wide">
@@ -298,6 +482,7 @@ export function InspectorPanel({
                       type="checkbox"
                       checked={task.done}
                       onChange={() => toggleSubTask(i)}
+                      disabled={inputsDisabled}
                       className="accent-poe-complete-green"
                     />
                     <span className={`text-xs flex-1 ${task.done ? "text-poe-text-dim line-through" : "text-poe-text-primary"}`}>
@@ -305,6 +490,7 @@ export function InspectorPanel({
                     </span>
                     <button
                       onClick={() => removeSubTask(i)}
+                      disabled={inputsDisabled}
                       className="text-poe-danger text-xs opacity-0 group-hover:opacity-100 transition"
                     >
                       x
@@ -318,9 +504,10 @@ export function InspectorPanel({
                   onChange={(e) => setNewSubTask(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && addSubTask()}
                   placeholder="New sub-task..."
+                  disabled={inputsDisabled}
                   className="poe-input flex-1 px-2 py-1 text-xs"
                 />
-                <button onClick={addSubTask} className="poe-btn px-2 py-1 text-xs">
+                <button onClick={addSubTask} disabled={inputsDisabled} className="poe-btn px-2 py-1 text-xs disabled:opacity-50">
                   Add
                 </button>
               </div>
@@ -341,6 +528,7 @@ export function InspectorPanel({
                     </a>
                     <button
                       onClick={() => removeResource(i)}
+                      disabled={inputsDisabled}
                       className="text-poe-danger text-xs opacity-0 group-hover:opacity-100 transition"
                     >
                       x
@@ -353,6 +541,7 @@ export function InspectorPanel({
                   value={newResTitle}
                   onChange={(e) => setNewResTitle(e.target.value)}
                   placeholder="Title..."
+                  disabled={inputsDisabled}
                   className="poe-input w-full px-2 py-1 text-xs"
                 />
                 <div className="flex gap-2">
@@ -360,9 +549,10 @@ export function InspectorPanel({
                     value={newResUrl}
                     onChange={(e) => setNewResUrl(e.target.value)}
                     placeholder="URL..."
+                    disabled={inputsDisabled}
                     className="poe-input flex-1 px-2 py-1 text-xs"
                   />
-                  <button onClick={addResource} className="poe-btn px-2 py-1 text-xs">
+                  <button onClick={addResource} disabled={inputsDisabled} className="poe-btn px-2 py-1 text-xs disabled:opacity-50">
                     Add
                   </button>
                 </div>
@@ -373,68 +563,115 @@ export function InspectorPanel({
               <label className="block text-[10px] text-poe-text-dim mb-1 uppercase tracking-wide">Notes</label>
               <textarea
                 value={notes}
-                onChange={(e) => { setNotes(e.target.value); markDirty(); }}
+                onChange={(e) => setNotes(e.target.value)}
                 rows={3}
                 placeholder="Freeform notes..."
+                disabled={inputsDisabled}
                 className="poe-input w-full px-3 py-2 text-sm resize-none"
               />
             </div>
 
-            <SectionHeader>Actions</SectionHeader>
+            {/* Actions Section */}
+            <SectionHeader icon={
+              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <circle cx="12" cy="12" r="3" />
+                <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
+              </svg>
+            }>Actions</SectionHeader>
 
             <div className="space-y-2">
-              <button
-                onClick={save}
-                disabled={!dirty || saveState === "saving"}
-                className={`w-full py-2 text-sm font-semibold rounded-md transition ${
-                  dirty
-                    ? "poe-btn-gold poe-btn"
-                    : "poe-btn opacity-50 cursor-not-allowed"
-                }`}
-              >
-                {saveState === "saving"
-                  ? "Saving..."
-                  : saveState === "saved"
-                  ? "Saved"
-                  : saveState === "failed"
-                  ? "Retry Save"
-                  : dirty
-                  ? "Save Changes"
-                  : "No Changes"}
-              </button>
+              {!inputsDisabled ? (
+                <>
+                  <button
+                    onClick={saveNow}
+                    disabled={saveState === "saving"}
+                    className={`w-full py-2 text-sm font-semibold rounded-md transition ${
+                      saveState === "saving"
+                        ? "poe-btn text-poe-progress-blue border-poe-progress-blue"
+                        : saveState === "saved"
+                        ? "poe-btn text-poe-complete-bright border-poe-complete-green bg-poe-complete-green/10"
+                        : saveState === "unsaved"
+                        ? "poe-btn-gold poe-btn"
+                        : "poe-btn opacity-60"
+                    }`}
+                  >
+                    {saveState === "saving" ? "Saving..." :
+                     saveState === "saved" ? "Saved" :
+                     saveState === "failed" ? "Retry Save" :
+                     saveState === "unsaved" ? "Save Changes" :
+                     "No Changes"}
+                  </button>
 
-              <button
-                onClick={() => onAiEnhance(node.id)}
-                disabled={aiEnhancing}
-                className="w-full py-2 text-sm font-semibold rounded-md transition poe-btn"
-                style={{ borderColor: "#5b5ef0", color: "#818cf8" }}
-              >
-                {aiEnhancing ? "Enhancing..." : "AI Enhance This Skill"}
-              </button>
+                  <button
+                    onClick={() => onAiEnhance(node.id)}
+                    disabled={aiEnhancing}
+                    className="w-full py-2 text-sm font-semibold rounded-md transition poe-btn"
+                    style={{ borderColor: "#5b5ef0", color: "#818cf8" }}
+                  >
+                    {aiEnhancing ? "Working..." : "AI Enhance This Skill"}
+                  </button>
 
-              <button
-                onClick={() => onAiEnhance(null)}
-                disabled={aiEnhancing}
-                className="w-full py-1.5 text-xs rounded-md transition poe-btn"
-                style={{ borderColor: "#5b5ef0", color: "#818cf8", opacity: 0.7 }}
-              >
-                {aiEnhancing ? "Enhancing..." : "AI Enhance All Skills"}
-              </button>
+                  <div>
+                    <div className="text-[10px] text-poe-text-dim uppercase tracking-wide font-mono mb-1.5 mt-2">
+                      AI Suggest New Skill
+                    </div>
+                    <div className="flex gap-1.5">
+                      <button
+                        onClick={() => onAiSuggest(node.id, "above")}
+                        disabled={aiEnhancing}
+                        className="flex-1 py-2 text-[11px] font-mono rounded-md transition poe-btn disabled:opacity-40 flex flex-col items-center gap-0.5"
+                        style={{ borderColor: "#5b5ef0", color: "#818cf8" }}
+                      >
+                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                          <path d="M12 19V5M5 12l7-7 7 7" />
+                        </svg>
+                        <span>Above</span>
+                      </button>
+                      <button
+                        onClick={() => onAiSuggest(node.id, "below")}
+                        disabled={aiEnhancing}
+                        className="flex-1 py-2 text-[11px] font-mono rounded-md transition poe-btn disabled:opacity-40 flex flex-col items-center gap-0.5"
+                        style={{ borderColor: "#5b5ef0", color: "#818cf8" }}
+                      >
+                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                          <path d="M12 5v14M5 12l7 7 7-7" />
+                        </svg>
+                        <span>Below</span>
+                      </button>
+                      <button
+                        onClick={() => onAiSuggest(node.id, "parallel")}
+                        disabled={aiEnhancing}
+                        className="flex-1 py-2 text-[11px] font-mono rounded-md transition poe-btn disabled:opacity-40 flex flex-col items-center gap-0.5"
+                        style={{ borderColor: "#5b5ef0", color: "#818cf8" }}
+                      >
+                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                          <path d="M5 12h14M12 5l7 7-7 7" />
+                        </svg>
+                        <span>Parallel</span>
+                      </button>
+                    </div>
+                  </div>
 
-              <div className="flex gap-2">
-                <button
-                  onClick={() => onDuplicate(node.id)}
-                  className="poe-btn flex-1 py-1.5 text-xs"
-                >
-                  Duplicate
-                </button>
-                <button
-                  onClick={() => onDelete(node.id)}
-                  className="poe-btn-danger poe-btn flex-1 py-1.5 text-xs"
-                >
-                  Delete
-                </button>
-              </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => onDuplicate(node.id)}
+                      className="poe-btn flex-1 py-1.5 text-xs"
+                    >
+                      Duplicate
+                    </button>
+                    <button
+                      onClick={() => onDelete(node.id)}
+                      className="poe-btn-danger poe-btn flex-1 py-1.5 text-xs"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="rounded-md border border-poe-border-dim bg-poe-panel-hover/30 px-3 py-2 text-xs text-poe-text-dim">
+                  Read-only mode is active. Switch back to edit mode to change this node.
+                </div>
+              )}
             </div>
           </motion.div>
         </AnimatePresence>
