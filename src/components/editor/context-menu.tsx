@@ -15,9 +15,9 @@ interface ContextMenuProps {
 }
 
 const statusActions: { value: NodeStatus; label: string; icon: string }[] = [
-  { value: "locked", label: "Set Sealed", icon: "🔒" },
+  { value: "locked", label: "Set Blocked", icon: "🔒" },
   { value: "available", label: "Set Ready", icon: "⭐" },
-  { value: "in_progress", label: "Set Active", icon: "⚡" },
+  { value: "in_progress", label: "Set In Progress", icon: "⚡" },
   { value: "completed", label: "Set Done", icon: "✓" },
 ];
 
