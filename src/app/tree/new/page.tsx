@@ -60,7 +60,7 @@ export default function NewTreePage() {
         >
           New Roadmap
         </motion.h1>
-        <p className="text-sm text-poe-text-dim text-center mb-10">Define your goal and we'll map the steps to get there</p>
+        <p className="text-sm text-poe-text-dim text-center mb-10">Define your goal and we&apos;ll map the steps to get there</p>
 
         {/* Title input */}
         <div className="mb-8">
