@@ -58,19 +58,19 @@ export default function NewTreePage() {
           animate={{ opacity: 1, y: 0 }}
           className="font-cinzel text-3xl font-bold text-poe-text-primary mb-2 text-center"
         >
-          New Skill Tree
+          New Roadmap
         </motion.h1>
-        <p className="text-sm text-poe-text-dim text-center mb-10">Choose your path</p>
+        <p className="text-sm text-poe-text-dim text-center mb-10">Define your goal and we'll map the steps to get there</p>
 
         {/* Title input */}
         <div className="mb-8">
           <label className="block text-[10px] text-poe-text-dim mb-1.5 uppercase tracking-wider font-mono">
-            Tree Title
+            Goal
           </label>
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="e.g., Rust Programming"
+            placeholder="e.g., Learn Rust Programming"
             className="poe-input w-full px-4 py-3 text-sm"
           />
         </div>
@@ -93,7 +93,7 @@ export default function NewTreePage() {
                 </svg>
               </div>
               <div className="font-cinzel text-sm font-semibold text-poe-text-primary mb-1">AI Generate</div>
-              <div className="text-[10px] text-poe-text-dim">Enter a topic, AI forges the tree</div>
+              <div className="text-[10px] text-poe-text-dim">Describe your goal, AI builds the roadmap</div>
             </button>
 
             <button
@@ -116,11 +116,11 @@ export default function NewTreePage() {
         {mode === "ai" && (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
             <div>
-              <label className="block text-[10px] text-poe-text-dim mb-1.5 uppercase tracking-wider font-mono">Topic</label>
+              <label className="block text-[10px] text-poe-text-dim mb-1.5 uppercase tracking-wider font-mono">Describe Your Goal</label>
               <textarea
                 value={topic}
                 onChange={(e) => setTopic(e.target.value)}
-                placeholder="Describe what the skill tree should cover..."
+                placeholder="What do you want to achieve? e.g., Build production-ready Rust web services from scratch"
                 rows={3}
                 className="poe-input w-full px-4 py-3 text-sm resize-none"
               />
@@ -147,7 +147,7 @@ export default function NewTreePage() {
                 className="flex-1 poe-btn py-3 font-cinzel font-semibold tracking-wider disabled:opacity-50"
                 style={{ borderColor: "#5b5ef0", color: "#818cf8" }}
               >
-                {loading ? "Forging..." : "Generate with AI"}
+                {loading ? "Building roadmap..." : "Generate Roadmap"}
               </button>
             </div>
           </motion.div>
@@ -164,7 +164,7 @@ export default function NewTreePage() {
               disabled={loading || !title.trim()}
               className="flex-1 poe-btn-gold poe-btn py-3 font-cinzel font-semibold tracking-wider disabled:opacity-50"
             >
-              {loading ? "Forging..." : "Create Blank Tree"}
+              {loading ? "Creating..." : "Create Blank Roadmap"}
             </button>
           </motion.div>
         )}

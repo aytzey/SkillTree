@@ -64,7 +64,7 @@ export function TreeCard({ id, title, description, nodeCount, progress, updatedA
         </div>
         <div className="text-right text-[10px] font-mono text-poe-text-dim mt-1.5">
           {isComplete ? (
-            <span className="text-poe-complete-bright">Mastered</span>
+            <span className="text-poe-complete-bright">Complete</span>
           ) : (
             `${progress}%`
           )}
