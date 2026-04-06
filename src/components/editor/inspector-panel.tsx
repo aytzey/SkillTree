@@ -31,10 +31,10 @@ interface InspectorPanelProps {
 }
 
 const statusOptions: { value: NodeStatus; label: string; color: string }[] = [
-  { value: "locked", label: "Sealed", color: "border-poe-locked-mid text-poe-locked-mid" },
-  { value: "available", label: "Ready", color: "border-poe-gold-mid text-poe-gold-bright" },
-  { value: "in_progress", label: "Active", color: "border-poe-progress-blue text-poe-progress-blue" },
-  { value: "completed", label: "Mastered", color: "border-poe-complete-green text-poe-complete-bright" },
+  { value: "locked", label: "Blocked", color: "border-poe-locked-mid text-poe-locked-mid" },
+  { value: "available", label: "Open", color: "border-poe-gold-mid text-poe-gold-bright" },
+  { value: "in_progress", label: "In Progress", color: "border-poe-progress-blue text-poe-progress-blue" },
+  { value: "completed", label: "Done", color: "border-poe-complete-green text-poe-complete-bright" },
 ];
 
 function SectionHeader({ children, icon }: { children: React.ReactNode; icon?: React.ReactNode }) {
@@ -63,18 +63,18 @@ function EmptyState({
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
         </svg>
       </div>
-      <p className="text-sm text-poe-text-secondary mb-1">No node selected</p>
-      <p className="text-xs text-poe-text-dim mb-5">Click a node on the canvas to inspect it</p>
+      <p className="text-sm text-poe-text-secondary mb-1">No step selected</p>
+      <p className="text-xs text-poe-text-dim mb-5">Click a step on the canvas to inspect it</p>
       {canCreate ? (
         <button
           onClick={onAddNode}
           className="poe-btn px-4 py-2 text-xs"
         >
-          + Create New Node
+          + Create New Step
         </button>
       ) : (
         <p className="text-[11px] text-poe-text-dim max-w-[180px]">
-          Read-only mode is active. Select a node to inspect its details.
+          Read-only mode is active. Select a step to inspect its details.
         </p>
       )}
     </div>
@@ -170,7 +170,7 @@ function ConnectionsSection({
 
   function renderDirection(direction: "above" | "below") {
     const edges = direction === "above" ? aboveEdges : belowEdges;
-    const label = direction === "above" ? "Above (Prerequisites)" : "Below (Leads to)";
+    const label = direction === "above" ? "Required By (Prerequisites)" : "Unlocks (Leads To)";
 
     return (
       <div className="mb-3">
@@ -213,7 +213,7 @@ function ConnectionsSection({
               onClick={() => handleAddNew(direction)}
               className="poe-btn px-2 py-1 text-[10px] flex-1"
             >
-              + Add {direction === "above" ? "Above" : "Below"}
+              + Add {direction === "above" ? "Requirement" : "Dependent"}
             </button>
             <button
               onClick={() =>
@@ -530,7 +530,7 @@ export function InspectorPanel({
       <div className="poe-inspector w-80 h-full flex flex-col">
         <div className="px-4 py-3 border-b border-poe-border-dim">
           <h3 className="text-sm font-cinzel font-semibold text-poe-text-dim uppercase tracking-wider">
-            Codex
+            Inspector
           </h3>
         </div>
         <div className="flex-1">
@@ -545,7 +545,7 @@ export function InspectorPanel({
     <div className="poe-inspector w-80 h-full flex flex-col">
       <div className="px-4 py-3 border-b border-poe-border-dim flex items-center justify-between">
         <h3 className="text-sm font-cinzel font-semibold text-poe-gold-bright uppercase tracking-wider">
-          Codex
+          Step
         </h3>
         <div className={`text-[10px] font-mono transition-colors ${
           saveState === "saving" ? "text-poe-progress-blue" :
@@ -571,7 +571,7 @@ export function InspectorPanel({
             exit={{ opacity: 0, x: -20 }}
             transition={{ duration: 0.2 }}
           >
-            {/* Identity Section */}
+            {/* Step Section */}
             <h4 className="text-[10px] uppercase tracking-[0.15em] text-poe-text-dim font-mono mb-3 flex items-center gap-2">
               <span className="text-poe-gold-dim">
                 <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -579,7 +579,7 @@ export function InspectorPanel({
                   <circle cx="12" cy="7" r="4" />
                 </svg>
               </span>
-              Identity
+              Step
             </h4>
 
             <div className="mb-3">
@@ -648,10 +648,10 @@ export function InspectorPanel({
               <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                 <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
               </svg>
-            }>Progression</SectionHeader>
+            }>Effort</SectionHeader>
 
             <div className="mb-3">
-              <label className="block text-[10px] text-poe-text-dim mb-1.5 uppercase tracking-wide">Difficulty</label>
+              <label className="block text-[10px] text-poe-text-dim mb-1.5 uppercase tracking-wide">Effort Level</label>
               <div className="flex gap-1">
                 {[1, 2, 3, 4, 5].map((level) => (
                   <button
@@ -712,11 +712,11 @@ export function InspectorPanel({
                 <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
                 <polyline points="14 2 14 8 20 8" />
               </svg>
-            }>Content</SectionHeader>
+            }>Requirements</SectionHeader>
 
             <div className="mb-4">
               <label className="block text-[10px] text-poe-text-dim mb-2 uppercase tracking-wide">
-                Sub-tasks
+                Checklist
                 <span className="text-poe-text-secondary ml-1">
                   ({subTasks.filter((t) => t.done).length}/{subTasks.length})
                 </span>
@@ -749,7 +749,7 @@ export function InspectorPanel({
                   value={newSubTask}
                   onChange={(e) => setNewSubTask(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && addSubTask()}
-                  placeholder="New sub-task..."
+                  placeholder="New checklist item..."
                   disabled={inputsDisabled}
                   className="poe-input flex-1 px-2 py-1 text-xs"
                 />
@@ -824,7 +824,7 @@ export function InspectorPanel({
                 <polyline points="15 3 21 3 21 9" />
                 <line x1="10" y1="14" x2="21" y2="3" />
               </svg>
-            }>Connections</SectionHeader>
+            }>Dependencies</SectionHeader>
 
             <ConnectionsSection
               node={node}
@@ -875,12 +875,12 @@ export function InspectorPanel({
                     className="w-full py-2 text-sm font-semibold rounded-md transition poe-btn"
                     style={{ borderColor: "#5b5ef0", color: "#818cf8" }}
                   >
-                    {aiEnhancing ? "Working..." : "AI Enhance This Skill"}
+                    {aiEnhancing ? "Working..." : "AI Enhance This Step"}
                   </button>
 
                   <div>
                     <div className="text-[10px] text-poe-text-dim uppercase tracking-wide font-mono mb-1.5 mt-2">
-                      AI Suggest New Skill
+                      AI Suggest Step
                     </div>
                     <div className="flex gap-1.5">
                       <button
@@ -936,7 +936,7 @@ export function InspectorPanel({
                 </>
               ) : (
                 <div className="rounded-md border border-poe-border-dim bg-poe-panel-hover/30 px-3 py-2 text-xs text-poe-text-dim">
-                  Read-only mode is active. Switch back to edit mode to change this node.
+                  Read-only mode is active. Switch back to edit mode to change this step.
                 </div>
               )}
             </div>
