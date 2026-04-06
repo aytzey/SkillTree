@@ -23,7 +23,7 @@ export function autoLayout(
 ): Map<string, Position> {
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: direction, nodesep: 80, ranksep: 120 });
+  g.setGraph({ rankdir: direction, nodesep: 120, ranksep: 150 });
 
   for (const node of nodes) {
     g.setNode(node.id, { width: node.width, height: node.height });
