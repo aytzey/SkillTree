@@ -18,22 +18,18 @@ interface EdgeStyleDef {
 const edgeStyles: Record<EdgeType, EdgeStyleDef> = {
   prerequisite: {
     stroke: "#c4941a",
-    strokeWidth: 2.5,
-    opacity: 0.85,
-    glowColor: "rgba(196, 148, 26, 0.25)",
-    glowWidth: 10,
+    strokeWidth: 3.5,
+    opacity: 1.0,
+    glowColor: "rgba(196, 148, 26, 0.35)",
+    glowWidth: 12,
     animated: true,
     particleColor: "#f5d060",
   },
   recommended: {
     stroke: "#818cf8",
-    strokeWidth: 1.8,
-    strokeDasharray: "8 4",
-    opacity: 0.5,
-    glowColor: "rgba(129, 140, 248, 0.15)",
-    glowWidth: 6,
-    animated: true,
-    particleColor: "#a5b4fc",
+    strokeWidth: 1.5,
+    strokeDasharray: "8 5",
+    opacity: 0.35,
   },
   optional: {
     stroke: "#404050",
@@ -43,11 +39,16 @@ const edgeStyles: Record<EdgeType, EdgeStyleDef> = {
   },
 };
 
+// Unique-enough marker ID prefix to avoid SVG namespace collisions
+const PREREQ_ARROW_ID = "skill-edge-prereq-arrow";
+
 function SkillEdgeComponent(props: EdgeProps) {
   const {
+    id,
     sourceX, sourceY, targetX, targetY,
     sourcePosition, targetPosition,
     data,
+    markerEnd,
   } = props;
   const edgeType = (data?.type as EdgeType) || "prerequisite";
   const style = edgeStyles[edgeType];
@@ -57,8 +58,32 @@ function SkillEdgeComponent(props: EdgeProps) {
     sourcePosition, targetPosition,
   });
 
+  // Per-edge unique marker ID so concurrent edges don't share state
+  const arrowMarkerId = `${PREREQ_ARROW_ID}-${id}`;
+  const isPrerequisite = edgeType === "prerequisite";
+
   return (
     <>
+      {/* Inline arrowhead definition for prerequisite edges */}
+      {isPrerequisite && (
+        <defs>
+          <marker
+            id={arrowMarkerId}
+            markerWidth="10"
+            markerHeight="7"
+            refX="9"
+            refY="3.5"
+            orient="auto"
+          >
+            <polygon
+              points="0 0, 10 3.5, 0 7"
+              fill={style.stroke}
+              opacity={style.opacity}
+            />
+          </marker>
+        </defs>
+      )}
+
       {/* Outer glow layer */}
       {style.glowColor && (
         <BaseEdge
@@ -66,7 +91,7 @@ function SkillEdgeComponent(props: EdgeProps) {
           style={{
             stroke: style.glowColor,
             strokeWidth: style.strokeWidth + (style.glowWidth || 8),
-            opacity: 0.4,
+            opacity: 0.45,
             filter: "blur(4px)",
           }}
         />
@@ -75,6 +100,7 @@ function SkillEdgeComponent(props: EdgeProps) {
       {/* Main edge line */}
       <BaseEdge
         path={edgePath}
+        markerEnd={isPrerequisite ? `url(#${arrowMarkerId})` : markerEnd}
         style={{
           stroke: style.stroke,
           strokeWidth: style.strokeWidth,
@@ -83,7 +109,7 @@ function SkillEdgeComponent(props: EdgeProps) {
         }}
       />
 
-      {/* Energy flow particles — layer 1 */}
+      {/* Energy flow particles — prerequisite only */}
       {style.animated && (
         <>
           <BaseEdge
