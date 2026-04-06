@@ -222,14 +222,7 @@ body {
   animation: select-pulse 1.5s ease-in-out infinite;
 }
 
-.poe-node:not(.poe-node-locked):hover:not(.poe-node-selected) {
-  filter: brightness(1.25);
-  transform: scale(1.05);
-}
-
-.poe-node-keystone:not(.poe-node-locked):hover:not(.poe-node-selected) {
-  transform: scale(1.04);
-}
+/* Node hover — see enhanced version in POE ANIMATION SYSTEM below */
 
 /* Node tier enhancements */
 .poe-node-keystone {
@@ -448,4 +441,255 @@ body {
 /* Canvas atmosphere — subtle nebula clouds */
 .poe-canvas-bg .react-flow__viewport {
   filter: drop-shadow(0 0 100px rgba(91, 94, 240, 0.02));
+}
+
+/* ===================== POE ANIMATION SYSTEM ===================== */
+
+/* --- Canvas ambient nebula --- */
+.poe-canvas-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(ellipse 600px 400px at 25% 35%, rgba(196, 148, 26, 0.025) 0%, transparent 70%),
+    radial-gradient(ellipse 500px 350px at 75% 65%, rgba(91, 94, 240, 0.02) 0%, transparent 70%),
+    radial-gradient(ellipse 400px 300px at 50% 80%, rgba(124, 58, 237, 0.015) 0%, transparent 70%);
+  animation: nebula-drift 25s ease-in-out infinite;
+}
+
+@keyframes nebula-drift {
+  0%, 100% { opacity: 1; transform: translate(0, 0) scale(1); }
+  33% { opacity: 0.8; transform: translate(15px, -10px) scale(1.02); }
+  66% { opacity: 1.1; transform: translate(-10px, 8px) scale(0.98); }
+}
+
+/* --- Tooltip entrance --- */
+@keyframes tooltip-enter {
+  0% { opacity: 0; transform: translateX(-50%) translateY(6px) scale(0.96); }
+  100% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+}
+
+.poe-tooltip-enter {
+  animation: tooltip-enter 0.2s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+/* --- Context menu entrance --- */
+@keyframes menu-scale-in {
+  0% { opacity: 0; transform: scale(0.92) translateY(-4px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes menu-item-in {
+  0% { opacity: 0; transform: translateX(-6px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+
+.poe-menu-enter {
+  animation: menu-scale-in 0.18s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+.poe-menu-item {
+  opacity: 0;
+  animation: menu-item-in 0.15s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+/* --- Button press micro-interaction --- */
+.poe-btn:active:not(:disabled) {
+  transform: scale(0.96);
+  transition: transform 0.08s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.poe-btn-gold:active:not(:disabled) {
+  transform: scale(0.96);
+  transition: transform 0.08s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/* --- Enhanced node hover --- */
+.poe-node:not(.poe-node-locked):hover:not(.poe-node-selected) {
+  filter: brightness(1.3);
+  transform: scale(1.05);
+  transition: all 0.2s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.poe-node-keystone:not(.poe-node-locked):hover:not(.poe-node-selected) {
+  transform: scale(1.04);
+  transition: all 0.2s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/* --- Node click ripple --- */
+@keyframes node-click-ripple {
+  0% { transform: scale(0.85); opacity: 0.5; border-width: 2px; }
+  100% { transform: scale(1.6); opacity: 0; border-width: 0px; }
+}
+
+.poe-node-ripple {
+  position: absolute;
+  inset: -4px;
+  border-radius: inherit;
+  border: 2px solid var(--select-color, rgba(196, 148, 26, 0.5));
+  pointer-events: none;
+  animation: node-click-ripple 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+/* --- Handle connector glow --- */
+.poe-node:not(.poe-node-locked) .react-flow__handle {
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.poe-node:not(.poe-node-locked):hover .react-flow__handle {
+  box-shadow: 0 0 6px rgba(196, 148, 26, 0.5);
+  transform: scale(1.2);
+}
+
+/* --- Progress bar energy shimmer --- */
+@keyframes progress-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.poe-progress-shimmer {
+  background-size: 200% 100%;
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.12) 50%,
+    transparent 100%
+  );
+  animation: progress-shimmer 2s linear infinite;
+}
+
+/* --- Save button states --- */
+@keyframes save-success-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(13, 150, 104, 0.4); }
+  70% { box-shadow: 0 0 0 8px rgba(13, 150, 104, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(13, 150, 104, 0); }
+}
+
+@keyframes save-working-pulse {
+  0%, 100% { opacity: 0.8; }
+  50% { opacity: 1; }
+}
+
+.poe-save-success {
+  animation: save-success-pulse 0.6s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.poe-save-working {
+  animation: save-working-pulse 1.2s ease-in-out infinite;
+}
+
+/* --- Pick mode ambient glow --- */
+@keyframes pick-mode-glow {
+  0%, 100% { box-shadow: inset 0 0 30px rgba(196, 148, 26, 0.05); }
+  50% { box-shadow: inset 0 0 60px rgba(196, 148, 26, 0.1); }
+}
+
+.poe-pick-mode {
+  animation: pick-mode-glow 2s ease-in-out infinite;
+}
+
+/* --- Inspector section stagger --- */
+@keyframes section-reveal {
+  0% { opacity: 0; transform: translateY(8px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.poe-section-reveal {
+  opacity: 0;
+  animation: section-reveal 0.3s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+/* --- Status dot transitions --- */
+.poe-status-dot {
+  transition: all 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.poe-status-dot:hover {
+  transform: scale(1.4);
+}
+
+/* --- Edge hover glow --- */
+.react-flow__edge:hover .react-flow__edge-path {
+  filter: brightness(1.4) drop-shadow(0 0 4px currentColor);
+  transition: filter 0.2s ease;
+}
+
+/* --- Checkbox animation --- */
+@keyframes check-pop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+
+input[type="checkbox"]:checked {
+  animation: check-pop 0.2s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/* --- Enhanced scrollbar with glow --- */
+.poe-scrollbar::-webkit-scrollbar-thumb:active {
+  background: #4a4a80;
+  box-shadow: 0 0 4px rgba(196, 148, 26, 0.2);
+}
+
+/* --- Keyboard hint hover --- */
+kbd {
+  transition: all 0.15s ease;
+}
+kbd:hover {
+  border-color: rgba(196, 148, 26, 0.3);
+  color: #8a8a9a;
+}
+
+/* --- Ambient canvas particle layer --- */
+.poe-canvas-particles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  overflow: hidden;
+}
+
+.poe-canvas-particle {
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: rgba(196, 148, 26, 0.4);
+  box-shadow: 0 0 4px rgba(196, 148, 26, 0.3);
+  animation: canvas-float 12s ease-in-out infinite;
+}
+
+.poe-canvas-particle:nth-child(2n) {
+  background: rgba(129, 140, 248, 0.3);
+  box-shadow: 0 0 4px rgba(129, 140, 248, 0.2);
+  animation-duration: 15s;
+}
+
+.poe-canvas-particle:nth-child(3n) {
+  background: rgba(124, 58, 237, 0.25);
+  box-shadow: 0 0 4px rgba(124, 58, 237, 0.2);
+  animation-duration: 18s;
+  width: 1.5px;
+  height: 1.5px;
+}
+
+@keyframes canvas-float {
+  0% { transform: translateY(0) translateX(0); opacity: 0; }
+  10% { opacity: 0.6; }
+  50% { transform: translateY(-250px) translateX(40px); opacity: 0.4; }
+  90% { opacity: 0.6; }
+  100% { transform: translateY(-500px) translateX(-20px); opacity: 0; }
+}
+
+/* ===================== REDUCED MOTION ===================== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

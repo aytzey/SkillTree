@@ -20,8 +20,8 @@ const edgeStyles: Record<EdgeType, EdgeStyleDef> = {
     stroke: "#c4941a",
     strokeWidth: 3.5,
     opacity: 1.0,
-    glowColor: "rgba(196, 148, 26, 0.35)",
-    glowWidth: 12,
+    glowColor: "rgba(196, 148, 26, 0.4)",
+    glowWidth: 14,
     animated: true,
     particleColor: "#f5d060",
   },
@@ -29,7 +29,9 @@ const edgeStyles: Record<EdgeType, EdgeStyleDef> = {
     stroke: "#818cf8",
     strokeWidth: 1.5,
     strokeDasharray: "8 5",
-    opacity: 0.35,
+    opacity: 0.4,
+    glowColor: "rgba(129, 140, 248, 0.15)",
+    glowWidth: 6,
   },
   optional: {
     stroke: "#404050",
@@ -131,6 +133,17 @@ function SkillEdgeComponent(props: EdgeProps) {
               strokeDasharray: "2 26",
               opacity: 0.5,
               animation: "edge-energy-slow 2.5s linear infinite",
+            }}
+          />
+          {/* Energy flow particles — layer 3 (fine detail) */}
+          <BaseEdge
+            path={edgePath}
+            style={{
+              stroke: "rgba(255, 255, 255, 0.3)",
+              strokeWidth: 1,
+              strokeDasharray: "1 32",
+              opacity: 0.4,
+              animation: "edge-energy 2s linear infinite",
             }}
           />
         </>

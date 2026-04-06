@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { getTreeRouteAccessById } from "@/lib/tree-route-access";
 import { mergeNodeUpdates } from "@/lib/tree-editor-utils";
 import { toPrismaJson } from "@/lib/prisma-json";
+import { requestOpenRouterJson } from "@/lib/openrouter";
+import { buildRoadmapEnhancementPrompts } from "@/lib/roadmap-ai-prompts";
 
 export async function POST(req: NextRequest) {
   const { treeId, nodeId } = await req.json();
@@ -23,84 +25,47 @@ export async function POST(req: NextRequest) {
 
   if (!graph) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) return NextResponse.json({ error: "API key not configured" }, { status: 500 });
-
   const targetNodes = nodeId ? graph.nodes.filter((node) => node.id === nodeId) : graph.nodes;
   if (targetNodes.length === 0) {
     return NextResponse.json({ error: "No nodes found" }, { status: 404 });
   }
 
-  const treeContext = graph.nodes.map((node) => ({
+  const promptNodes = graph.nodes.map((node) => ({
     id: node.id,
     title: node.title,
     description: node.description,
     difficulty: node.difficulty,
     estimatedHours: node.estimatedHours,
-    subTasks: node.subTasks,
-    resources: node.resources,
+    subTasks: (node.subTasks as Array<{ title: string; done: boolean }> | null) || [],
+    resources: (node.resources as Array<{ title: string; url: string }> | null) || [],
   }));
+  const promptEdges = graph.edges.map((edge) => ({
+    sourceNodeId: edge.sourceNodeId,
+    targetNodeId: edge.targetNodeId,
+    type: edge.type,
+  }));
+  const promptTargets = promptNodes.filter((node) => targetNodes.some((target) => target.id === node.id));
 
-  const systemPrompt = `You are an expert project planner. You will be given a project roadmap and specific nodes to enhance.
-Your job is to improve each node's content to be more detailed, actionable, and useful for execution.
-
-For each node, improve:
-- description: Clarify the goal, requirement, or milestone and why it matters (2-3 sentences)
-- subTasks: Break down into concrete execution steps or next actions (3-5 sub-tasks). Keep existing done states.
-- resources: Add real, useful implementation, planning, or reference resources with valid URLs (2-4 resources)
-- estimatedHours: Provide a realistic effort estimate
-- difficulty: Adjust if needed (1=trivial, 2=easy, 3=medium, 4=hard, 5=expert)
-- Keep the node aligned with its existing dependency context in the roadmap
-
-Return ONLY valid JSON with this structure:
-{
-  "enhanced": [
-    {
-      "id": "original node id",
-      "description": "improved description",
-      "difficulty": 3,
-      "estimatedHours": 10,
-      "subTasks": [{"title": "concrete step", "done": false}],
-      "resources": [{"title": "resource name", "url": "https://..."}]
-    }
-  ]
-}
-
-Do NOT change the node title, id, or positions.`;
-
-  const userPrompt = `Roadmap topic: "${graph.title}"
-
-Full roadmap context (all nodes):
-${JSON.stringify(treeContext, null, 2)}
-
-Roadmap items to enhance:
-${JSON.stringify(targetNodes, null, 2)}
-
-Enhance ${nodeId ? "this specific roadmap item" : "all roadmap items"} to better describe goals, requirements, milestones, dependency context, and next steps. Return only JSON.`;
-
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "google/gemini-3-flash-preview",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      temperature: 0.7,
-      response_format: { type: "json_object" },
-    }),
+  const prompts = buildRoadmapEnhancementPrompts({
+    roadmapTitle: graph.title,
+    targetNodes: promptTargets,
+    nodes: promptNodes,
+    edges: promptEdges,
   });
 
-  if (!response.ok) {
-    return NextResponse.json({ error: `AI error: ${response.status}` }, { status: 500 });
+  let content: string;
+  try {
+    content = await requestOpenRouterJson({
+      systemPrompt: prompts.systemPrompt,
+      userPrompt: prompts.userPrompt,
+      temperature: 0.35,
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "AI error" },
+      { status: 500 }
+    );
   }
-
-  const data = await response.json();
-  const content = data.choices[0].message.content;
 
   let parsed: {
     enhanced: Array<{

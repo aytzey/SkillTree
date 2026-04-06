@@ -45,8 +45,8 @@ const config: Config = {
         "node-breathe": "node-breathe 3s ease-in-out infinite",
         "energy-flow": "energy-flow 2s linear infinite",
         "select-pulse": "select-pulse 1.5s ease-in-out infinite",
-        "fade-in": "fade-in 0.3s ease-out forwards",
-        "slide-in-right": "slide-in-right 0.3s ease-out forwards",
+        "fade-in": "fade-in 0.3s cubic-bezier(0.25, 1, 0.5, 1) forwards",
+        "slide-in-right": "slide-in-right 0.3s cubic-bezier(0.25, 1, 0.5, 1) forwards",
       },
       keyframes: {
         "node-breathe": {

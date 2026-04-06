@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import type { ShareMode } from "@/types";
 
 type SaveState = "idle" | "unsaved" | "saving" | "saved" | "failed";
@@ -82,7 +83,7 @@ export function WorldHeader({
         <div className="flex items-center gap-4 min-w-0">
           <Link
             href="/dashboard"
-            className="text-poe-text-dim hover:text-poe-gold-mid transition text-sm"
+            className="text-poe-text-dim hover:text-poe-gold-mid transition-colors duration-200 text-sm"
             title="Back to dashboard"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -94,14 +95,32 @@ export function WorldHeader({
               {title}
             </h2>
             <div className="flex items-center gap-2 mt-1">
-              <span
+              <motion.span
+                key={saveState}
                 className={saveDotClass[saveState]}
                 style={{ width: 8, height: 8, borderRadius: "50%", display: "inline-block" }}
+                initial={{ scale: 0.6, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ duration: 0.2, ease: [0.25, 1, 0.5, 1] }}
               />
-              <span className="text-xs text-poe-text-dim font-mono">{saveLabels[saveState]}</span>
-              <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded border border-poe-border-mid text-poe-text-dim">
+              <AnimatePresence mode="wait">
+                <motion.span
+                  key={saveState}
+                  className="text-xs text-poe-text-dim font-mono"
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 4 }}
+                  transition={{ duration: 0.15 }}
+                >
+                  {saveLabels[saveState]}
+                </motion.span>
+              </AnimatePresence>
+              <motion.span
+                layout
+                className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded border border-poe-border-mid text-poe-text-dim"
+              >
                 {isReadOnly ? "Viewing" : "Editing"}
-              </span>
+              </motion.span>
               {!canManageShare && shareMode !== "private" && (
                 <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded border border-poe-energy-blue/20 text-poe-energy-blue bg-poe-energy-blue/10">
                   {shareModeLabels[shareMode]}
@@ -167,21 +186,32 @@ export function WorldHeader({
             </select>
           )}
 
-          {shareFeedback && (
-            <span className="text-[10px] font-mono text-poe-energy-blue max-w-[220px] truncate">
-              {shareFeedback}
-            </span>
-          )}
+          <AnimatePresence>
+            {shareFeedback && (
+              <motion.span
+                initial={{ opacity: 0, x: 8 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -8 }}
+                transition={{ duration: 0.2, ease: [0.25, 1, 0.5, 1] }}
+                className="text-[10px] font-mono text-poe-energy-blue max-w-[220px] truncate"
+              >
+                {shareFeedback}
+              </motion.span>
+            )}
+          </AnimatePresence>
 
           {canEdit && (
-            <button
+            <motion.button
               onClick={onSave}
               disabled={isReadOnly || saveState === "saving"}
-              className="poe-btn-gold px-4 py-1.5 text-sm font-semibold disabled:opacity-50 poe-btn"
+              className={`poe-btn-gold px-4 py-1.5 text-sm font-semibold disabled:opacity-50 poe-btn ${
+                saveState === "saved" ? "poe-save-success" : ""
+              } ${saveState === "saving" ? "poe-save-working" : ""}`}
               title="Save positions (Ctrl+S)"
+              whileTap={{ scale: 0.96 }}
             >
               {saveState === "saving" ? "Saving..." : "Save"}
-            </button>
+            </motion.button>
           )}
         </div>
       </div>

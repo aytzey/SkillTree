@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { treeId, topic, level } = await req.json();
+  const { treeId, topic, level, context } = await req.json();
   if (!treeId || !topic) {
     return NextResponse.json({ error: "treeId and topic required" }, { status: 400 });
   }
@@ -19,7 +19,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const generated = await generateSkillTree(topic, level || "beginner");
+  const generated = await generateSkillTree({
+    topic,
+    level,
+    context,
+  });
 
   const titleToId = new Map<string, string>();
   const nodeWidth = 150;

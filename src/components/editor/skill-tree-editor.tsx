@@ -8,6 +8,7 @@ import {
   useState,
   type ChangeEvent,
 } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   ReactFlow,
   MiniMap,
@@ -52,6 +53,34 @@ import type {
 
 const nodeTypes = { skillNode: SkillNode };
 const edgeTypes = { skillEdge: SkillEdge };
+
+const CANVAS_PARTICLES = Array.from({ length: 12 }, (_, i) => ({
+  id: i,
+  left: `${(i * 8.3 + 5) % 100}%`,
+  bottom: `${(i * 13 + 10) % 40}%`,
+  delay: `${i * 1.1}s`,
+  size: i % 3 === 0 ? 1.5 : 2,
+}));
+
+function CanvasParticles() {
+  return (
+    <div className="poe-canvas-particles">
+      {CANVAS_PARTICLES.map((p) => (
+        <div
+          key={p.id}
+          className="poe-canvas-particle"
+          style={{
+            left: p.left,
+            bottom: p.bottom,
+            animationDelay: p.delay,
+            width: p.size,
+            height: p.size,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
 
 type SaveState = "idle" | "unsaved" | "saving" | "saved" | "failed";
 type ImportMode = "new" | "replace";
@@ -889,6 +918,73 @@ function EditorInner({
     ]
   );
 
+  const handleAiSubTree = useCallback(
+    async (nodeId: string, maxDepth: number) => {
+      if (!effectiveCanEdit) return;
+
+      setAiEnhancing(true);
+
+      try {
+        const response = await fetch("/api/generate-subtree", {
+          method: "POST",
+          headers: buildRequestHeaders(true),
+          body: JSON.stringify({
+            treeId: tree.id,
+            nodeId,
+            maxDepth,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error("AI sub-tree generation failed");
+        }
+
+        const data = await response.json();
+        const newNodes = Array.isArray(data.nodes) ? data.nodes : [];
+        const newEdges = Array.isArray(data.edges) ? data.edges : [];
+
+        for (const newNode of newNodes) {
+          treeDataRef.current.nodes.push(newNode);
+          setNodes((currentNodes) => [
+            ...currentNodes,
+            {
+              id: newNode.id,
+              type: "skillNode",
+              position: { x: newNode.positionX, y: newNode.positionY },
+              data: {
+                title: newNode.title,
+                status: newNode.status,
+                difficulty: newNode.difficulty,
+                progress: newNode.progress,
+                description: newNode.description,
+                selected: false,
+              },
+            },
+          ]);
+        }
+
+        for (const newEdge of newEdges) {
+          treeDataRef.current.edges.push(newEdge);
+          setEdges((currentEdges) => [
+            ...currentEdges,
+            {
+              id: newEdge.id,
+              source: newEdge.sourceNodeId,
+              target: newEdge.targetNodeId,
+              type: "skillEdge",
+              data: { type: newEdge.type },
+            },
+          ]);
+        }
+
+        recomputeStatuses();
+      } finally {
+        setAiEnhancing(false);
+      }
+    },
+    [buildRequestHeaders, effectiveCanEdit, recomputeStatuses, setEdges, setNodes, tree.id]
+  );
+
   const handleAddNodeWithEdge = useCallback(
     async (direction: "above" | "below", anchorNodeId: string, edgeType: EdgeType) => {
       if (!effectiveCanEdit) return;
@@ -1090,7 +1186,8 @@ function EditorInner({
       />
 
       <div className="flex-1 flex min-h-0">
-        <div className="flex-1 relative">
+        <div className={`flex-1 relative ${pickMode ? "poe-pick-mode" : ""}`}>
+          <CanvasParticles />
           <ReactFlow
             nodes={nodes}
             edges={edges}
@@ -1163,56 +1260,85 @@ function EditorInner({
           )}
 
           {/* Pick mode banner */}
-          {pickMode && (
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 px-4 py-2 rounded-md border border-poe-gold-mid/60 bg-poe-obsidian/95 text-sm text-poe-gold-bright font-mono flex items-center gap-3 shadow-lg">
-              <span>Click a step to connect</span>
-              <button
-                onClick={() => setPickMode(null)}
-                className="text-poe-text-dim hover:text-poe-danger text-xs transition"
+          <AnimatePresence>
+            {pickMode && (
+              <motion.div
+                initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -8, scale: 0.97 }}
+                transition={{ duration: 0.2, ease: [0.25, 1, 0.5, 1] }}
+                className="absolute top-4 left-1/2 -translate-x-1/2 z-30 px-4 py-2 rounded-md border border-poe-gold-mid/60 bg-poe-obsidian/95 text-sm text-poe-gold-bright font-mono flex items-center gap-3"
+                style={{ boxShadow: "0 4px 20px rgba(0,0,0,0.5), 0 0 30px rgba(196,148,26,0.1)" }}
               >
-                ESC
-              </button>
-            </div>
-          )}
+                <motion.span
+                  animate={{ opacity: [0.7, 1, 0.7] }}
+                  transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+                >
+                  Click a step to connect
+                </motion.span>
+                <button
+                  onClick={() => setPickMode(null)}
+                  className="text-poe-text-dim hover:text-poe-danger text-xs transition-colors duration-150"
+                >
+                  ESC
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Pick mode edge type popup */}
-          {pickEdgeTypePopup && (
-            <>
-              <div className="fixed inset-0 z-40" onClick={() => setPickEdgeTypePopup(null)} />
-              <div
-                className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 border border-poe-border-mid rounded-md p-3 min-w-[200px]"
-                style={{
-                  background: "linear-gradient(180deg, #141430 0%, #10102a 100%)",
-                  boxShadow: "0 8px 32px rgba(0,0,0,0.6), 0 0 1px rgba(196,148,26,0.2)",
-                }}
-              >
-                <div className="text-[10px] text-poe-text-dim uppercase tracking-wide font-mono mb-2">
-                  Connection Type
-                </div>
-                {([
-                  { value: "prerequisite" as EdgeType, label: "Prerequisite", color: "text-poe-gold-bright border-poe-gold-mid" },
-                  { value: "recommended" as EdgeType, label: "Recommended", color: "text-poe-energy-blue border-poe-energy-blue" },
-                  { value: "optional" as EdgeType, label: "Optional", color: "text-poe-text-dim border-poe-border-mid" },
-                ]).map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => {
-                      void handleLinkExistingNode(
-                        pickEdgeTypePopup.direction,
-                        pickEdgeTypePopup.anchorNodeId,
-                        pickEdgeTypePopup.targetNodeId,
-                        opt.value
-                      );
-                      setPickEdgeTypePopup(null);
-                    }}
-                    className={`w-full text-left px-3 py-2 text-xs rounded border transition mb-1 ${opt.color} hover:bg-white/5`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
+          <AnimatePresence>
+            {pickEdgeTypePopup && (
+              <>
+                <motion.div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setPickEdgeTypePopup(null)}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                />
+                <motion.div
+                  className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 border border-poe-border-mid rounded-md p-3 min-w-[200px]"
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  transition={{ duration: 0.2, ease: [0.25, 1, 0.5, 1] }}
+                  style={{
+                    background: "linear-gradient(180deg, #141430 0%, #10102a 100%)",
+                    boxShadow: "0 8px 32px rgba(0,0,0,0.6), 0 0 1px rgba(196,148,26,0.2)",
+                  }}
+                >
+                  <div className="text-[10px] text-poe-text-dim uppercase tracking-wide font-mono mb-2">
+                    Connection Type
+                  </div>
+                  {([
+                    { value: "prerequisite" as EdgeType, label: "Prerequisite", color: "text-poe-gold-bright border-poe-gold-mid" },
+                    { value: "recommended" as EdgeType, label: "Recommended", color: "text-poe-energy-blue border-poe-energy-blue" },
+                    { value: "optional" as EdgeType, label: "Optional", color: "text-poe-text-dim border-poe-border-mid" },
+                  ]).map((opt, i) => (
+                    <motion.button
+                      key={opt.value}
+                      initial={{ opacity: 0, x: -6 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: i * 0.04, duration: 0.15, ease: [0.25, 1, 0.5, 1] }}
+                      onClick={() => {
+                        void handleLinkExistingNode(
+                          pickEdgeTypePopup.direction,
+                          pickEdgeTypePopup.anchorNodeId,
+                          pickEdgeTypePopup.targetNodeId,
+                          opt.value
+                        );
+                        setPickEdgeTypePopup(null);
+                      }}
+                      className={`w-full text-left px-3 py-2 text-xs rounded border transition-colors duration-150 mb-1 ${opt.color} hover:bg-white/5`}
+                    >
+                      {opt.label}
+                    </motion.button>
+                  ))}
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>
         </div>
 
         <InspectorPanel
@@ -1246,6 +1372,9 @@ function EditorInner({
           }}
           onAiSuggest={(nodeId, direction) => {
             void handleAiSuggest(nodeId, direction);
+          }}
+          onAiSubTree={(nodeId, maxDepth) => {
+            void handleAiSubTree(nodeId, maxDepth);
           }}
           aiEnhancing={aiEnhancing}
           canEdit={canEdit}

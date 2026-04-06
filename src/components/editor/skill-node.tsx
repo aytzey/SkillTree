@@ -1,8 +1,8 @@
 "use client";
 
-import { memo, useState } from "react";
+import { memo, useState, useCallback, useRef } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import type { NodeStatus } from "@/types";
 
 interface SkillNodePayload {
@@ -93,8 +93,8 @@ function DifficultyPips({ level }: { level: number }) {
       {[1, 2, 3, 4, 5].map((i) => (
         <div
           key={i}
-          className={`w-1.5 h-1.5 rounded-full transition-colors ${
-            i <= level ? "bg-poe-gold-mid" : "bg-poe-border-dim"
+          className={`w-1.5 h-1.5 rounded-full transition-all duration-200 ${
+            i <= level ? "bg-poe-gold-mid scale-100" : "bg-poe-border-dim scale-90"
           }`}
         />
       ))}
@@ -102,23 +102,59 @@ function DifficultyPips({ level }: { level: number }) {
   );
 }
 
+const EASE_OUT: [number, number, number, number] = [0.25, 1, 0.5, 1];
+
+const tooltipVariants = {
+  hidden: { opacity: 0, y: 6, scale: 0.96 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    transition: { duration: 0.18, ease: EASE_OUT },
+  },
+  exit: {
+    opacity: 0,
+    y: 4,
+    scale: 0.97,
+    transition: { duration: 0.12, ease: EASE_OUT },
+  },
+};
+
 function SkillNodeComponent({ data }: NodeProps) {
   const { title, status, difficulty, progress, description, selected } =
     data as unknown as SkillNodePayload;
   const [hovered, setHovered] = useState(false);
+  const [ripples, setRipples] = useState<number[]>([]);
+  const rippleCounter = useRef(0);
   const tier = getNodeTier(difficulty);
+
+  const handleClick = useCallback(() => {
+    rippleCounter.current += 1;
+    const id = rippleCounter.current;
+    setRipples((prev) => [...prev, id]);
+    setTimeout(() => {
+      setRipples((prev) => prev.filter((r) => r !== id));
+    }, 500);
+  }, []);
 
   return (
     <motion.div
       initial={{ scale: 0.85, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
-      transition={{ duration: 0.3, ease: "easeOut" }}
+      transition={{ duration: 0.35, ease: [0.25, 1, 0.5, 1] }}
+      whileTap={status !== "locked" ? { scale: 0.97 } : undefined}
       className={`poe-node poe-node-${tier} ${stateClasses[status]} ${
         selected ? "poe-node-selected" : ""
       } ${tierSizes[tier]} ${tierBorderRadius[tier]} cursor-pointer relative`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onClick={handleClick}
     >
+      {/* Click ripple effects */}
+      {ripples.map((id) => (
+        <div key={id} className="poe-node-ripple" />
+      ))}
+
       <Handle
         type="target"
         position={Position.Top}
@@ -131,12 +167,18 @@ function SkillNodeComponent({ data }: NodeProps) {
 
       {/* Header: icon + difficulty */}
       <div className="flex items-center justify-between mb-1.5">
-        <div className={`${statusIndicator[status].color} flex items-center gap-1.5`}>
+        <motion.div
+          className={`${statusIndicator[status].color} flex items-center gap-1.5`}
+          key={status}
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ duration: 0.25, ease: [0.25, 1, 0.5, 1] }}
+        >
           <StatusIcon status={status} />
           {tier === "keystone" && (
             <span className="text-[8px] font-mono uppercase tracking-wider opacity-50">Keystone</span>
           )}
-        </div>
+        </motion.div>
         <DifficultyPips level={difficulty} />
       </div>
 
@@ -149,9 +191,15 @@ function SkillNodeComponent({ data }: NodeProps) {
 
       {/* Status label — hidden on small-tier nodes to reduce visual clutter */}
       {tier !== "small" && (
-        <div className={`text-[10px] mt-1 uppercase tracking-wider font-mono ${statusIndicator[status].color}`}>
+        <motion.div
+          key={`status-${status}`}
+          initial={{ opacity: 0, x: -4 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.2, ease: [0.25, 1, 0.5, 1] }}
+          className={`text-[10px] mt-1 uppercase tracking-wider font-mono ${statusIndicator[status].color}`}
+        >
           {statusIndicator[status].label}
-        </div>
+        </motion.div>
       )}
 
       {/* Progress bar */}
@@ -160,26 +208,39 @@ function SkillNodeComponent({ data }: NodeProps) {
           <motion.div
             initial={{ width: 0 }}
             animate={{ width: `${progress}%` }}
-            transition={{ duration: 0.5, ease: "easeOut" }}
-            className="h-full rounded-full bg-gradient-to-r from-poe-progress-blue to-poe-progress-purple"
-          />
+            transition={{ duration: 0.6, ease: [0.25, 1, 0.5, 1] }}
+            className="h-full rounded-full bg-gradient-to-r from-poe-progress-blue to-poe-progress-purple relative overflow-hidden"
+          >
+            <div className="absolute inset-0 poe-progress-shimmer" />
+          </motion.div>
         </div>
       )}
 
-      {/* Tooltip */}
-      {hovered && !selected && description && (
-        <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-3 z-50 pointer-events-none">
-          <div className="bg-poe-obsidian border border-poe-border-mid rounded-lg px-3 py-2 shadow-2xl max-w-[220px]">
-            <p className="text-[11px] text-poe-text-secondary leading-relaxed line-clamp-3">
-              {description}
-            </p>
-            {status === "in_progress" && (
-              <div className="mt-1.5 text-[10px] font-mono text-poe-progress-blue">{progress}% complete</div>
-            )}
-          </div>
-          <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-[6px] border-r-[6px] border-t-[6px] border-transparent border-t-poe-border-mid" />
-        </div>
-      )}
+      {/* Animated Tooltip */}
+      <AnimatePresence>
+        {hovered && !selected && description && (
+          <motion.div
+            className="absolute left-1/2 bottom-full mb-3 z-50 pointer-events-none"
+            style={{ transform: "translateX(-50%)" }}
+            variants={tooltipVariants}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+          >
+            <div className="bg-poe-obsidian/95 border border-poe-border-mid rounded-lg px-3 py-2 shadow-2xl max-w-[220px]"
+              style={{ boxShadow: "0 8px 32px rgba(0,0,0,0.5), 0 0 1px rgba(196,148,26,0.15)" }}
+            >
+              <p className="text-[11px] text-poe-text-secondary leading-relaxed line-clamp-3">
+                {description}
+              </p>
+              {status === "in_progress" && (
+                <div className="mt-1.5 text-[10px] font-mono text-poe-progress-blue">{progress}% complete</div>
+              )}
+            </div>
+            <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-[6px] border-r-[6px] border-t-[6px] border-transparent border-t-poe-border-mid" />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <Handle
         type="source"

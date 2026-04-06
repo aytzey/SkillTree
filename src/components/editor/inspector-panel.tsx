@@ -17,6 +17,7 @@ interface InspectorPanelProps {
   onAddNode: () => void;
   onAiEnhance: (nodeId: string | null) => void;
   onAiSuggest: (nodeId: string, direction: "above" | "below" | "parallel") => void;
+  onAiSubTree: (nodeId: string, maxDepth: number) => void;
   aiEnhancing: boolean;
   canEdit: boolean;
   isReadOnly: boolean;
@@ -37,15 +38,15 @@ const statusOptions: { value: NodeStatus; label: string; color: string }[] = [
   { value: "completed", label: "Done", color: "border-poe-complete-green text-poe-complete-bright" },
 ];
 
-function SectionHeader({ children, icon }: { children: React.ReactNode; icon?: React.ReactNode }) {
+function SectionHeader({ children, icon, delay = 0 }: { children: React.ReactNode; icon?: React.ReactNode; delay?: number }) {
   return (
-    <>
+    <div className="poe-section-reveal" style={{ animationDelay: `${delay}ms` }}>
       <div className="poe-section-divider my-4" />
       <h4 className="text-[10px] uppercase tracking-[0.15em] text-poe-text-dim font-mono mb-3 flex items-center gap-2">
         {icon && <span className="text-poe-gold-dim">{icon}</span>}
         {children}
       </h4>
-    </>
+    </div>
   );
 }
 
@@ -57,12 +58,21 @@ function EmptyState({
   canCreate: boolean;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center h-full text-center px-6">
-      <div className="w-16 h-16 rounded-full border border-poe-border-dim flex items-center justify-center mb-4">
+    <motion.div
+      className="flex flex-col items-center justify-center h-full text-center px-6"
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, ease: [0.25, 1, 0.5, 1] }}
+    >
+      <motion.div
+        className="w-16 h-16 rounded-full border border-poe-border-dim flex items-center justify-center mb-4"
+        animate={{ opacity: [0.5, 0.8, 0.5] }}
+        transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+      >
         <svg className="w-6 h-6 text-poe-text-dim" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
         </svg>
-      </div>
+      </motion.div>
       <p className="text-sm text-poe-text-secondary mb-1">No step selected</p>
       <p className="text-xs text-poe-text-dim mb-5">Click a step on the canvas to inspect it</p>
       {canCreate ? (
@@ -77,7 +87,7 @@ function EmptyState({
           Read-only mode is active. Select a step to inspect its details.
         </p>
       )}
-    </div>
+    </motion.div>
   );
 }
 
@@ -322,6 +332,7 @@ export function InspectorPanel({
   onAddNode,
   onAiEnhance,
   onAiSuggest,
+  onAiSubTree,
   aiEnhancing,
   canEdit,
   isReadOnly,
@@ -347,6 +358,7 @@ export function InspectorPanel({
   const [newResUrl, setNewResUrl] = useState("");
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [descExpanded, setDescExpanded] = useState(false);
+  const [subTreeDepth, setSubTreeDepth] = useState(2);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadedNodeIdRef = useRef<string | null>(null);
   const inputsDisabled = !canEdit || isReadOnly;
@@ -644,7 +656,7 @@ export function InspectorPanel({
             </div>
 
             {/* Progression Section */}
-            <SectionHeader icon={
+            <SectionHeader delay={80} icon={
               <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                 <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
               </svg>
@@ -707,7 +719,7 @@ export function InspectorPanel({
             </div>
 
             {/* Content Section */}
-            <SectionHeader icon={
+            <SectionHeader delay={160} icon={
               <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                 <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
                 <polyline points="14 2 14 8 20 8" />
@@ -818,7 +830,7 @@ export function InspectorPanel({
             </div>
 
             {/* Connections Section */}
-            <SectionHeader icon={
+            <SectionHeader delay={240} icon={
               <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                 <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
                 <polyline points="15 3 21 3 21 9" />
@@ -839,7 +851,7 @@ export function InspectorPanel({
             />
 
             {/* Actions Section */}
-            <SectionHeader icon={
+            <SectionHeader delay={320} icon={
               <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                 <circle cx="12" cy="12" r="3" />
                 <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
@@ -849,25 +861,36 @@ export function InspectorPanel({
             <div className="space-y-2">
               {!inputsDisabled ? (
                 <>
-                  <button
+                  <motion.button
                     onClick={saveNow}
                     disabled={saveState === "saving"}
-                    className={`w-full py-2 text-sm font-semibold rounded-md transition ${
+                    className={`w-full py-2 text-sm font-semibold rounded-md transition-colors ${
                       saveState === "saving"
-                        ? "poe-btn text-poe-progress-blue border-poe-progress-blue"
+                        ? "poe-btn text-poe-progress-blue border-poe-progress-blue poe-save-working"
                         : saveState === "saved"
-                        ? "poe-btn text-poe-complete-bright border-poe-complete-green bg-poe-complete-green/10"
+                        ? "poe-btn text-poe-complete-bright border-poe-complete-green bg-poe-complete-green/10 poe-save-success"
                         : saveState === "unsaved"
                         ? "poe-btn-gold poe-btn"
                         : "poe-btn opacity-60"
                     }`}
+                    whileTap={{ scale: 0.97 }}
                   >
-                    {saveState === "saving" ? "Saving..." :
-                     saveState === "saved" ? "Saved" :
-                     saveState === "failed" ? "Retry Save" :
-                     saveState === "unsaved" ? "Save Changes" :
-                     "No Changes"}
-                  </button>
+                    <AnimatePresence mode="wait">
+                      <motion.span
+                        key={saveState}
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 4 }}
+                        transition={{ duration: 0.12 }}
+                      >
+                        {saveState === "saving" ? "Saving..." :
+                         saveState === "saved" ? "Saved" :
+                         saveState === "failed" ? "Retry Save" :
+                         saveState === "unsaved" ? "Save Changes" :
+                         "No Changes"}
+                      </motion.span>
+                    </AnimatePresence>
+                  </motion.button>
 
                   <button
                     onClick={() => onAiEnhance(node.id)}
@@ -915,6 +938,40 @@ export function InspectorPanel({
                           <path d="M5 12h14M12 5l7 7-7 7" />
                         </svg>
                         <span>Parallel</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-[10px] text-poe-text-dim uppercase tracking-wide font-mono mb-1.5 mt-2">
+                      AI Expand Sub-tree
+                    </div>
+                    <div className="flex gap-2 items-end">
+                      <div className="flex-1">
+                        <label className="block text-[9px] text-poe-text-dim mb-1 font-mono">Depth</label>
+                        <div className="flex gap-1">
+                          {[1, 2, 3, 4, 5].map((d) => (
+                            <button
+                              key={d}
+                              onClick={() => setSubTreeDepth(d)}
+                              className={`w-7 h-7 rounded border text-xs font-mono transition ${
+                                d === subTreeDepth
+                                  ? "bg-poe-progress-purple/20 border-poe-progress-purple text-poe-energy-purple"
+                                  : "bg-transparent border-poe-border-dim text-poe-text-dim hover:border-poe-border-mid"
+                              }`}
+                            >
+                              {d}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => onAiSubTree(node.id, subTreeDepth)}
+                        disabled={aiEnhancing}
+                        className="py-2 px-3 text-[11px] font-mono font-semibold rounded-md transition poe-btn disabled:opacity-40"
+                        style={{ borderColor: "#7c3aed", color: "#a78bfa" }}
+                      >
+                        {aiEnhancing ? "..." : "Generate"}
                       </button>
                     </div>
                   </div>

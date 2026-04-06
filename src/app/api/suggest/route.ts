@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { getTreeRouteAccessById } from "@/lib/tree-route-access";
 import { findAvailableNodePosition } from "@/lib/tree-editor-utils";
 import { toPrismaJson } from "@/lib/prisma-json";
+import { requestOpenRouterJson } from "@/lib/openrouter";
+import { buildRoadmapSuggestionPrompts } from "@/lib/roadmap-ai-prompts";
 
 export async function POST(req: NextRequest) {
   const { treeId, nodeId, direction, preferredPositionX, preferredPositionY } = await req.json();
@@ -32,72 +34,47 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Node not found" }, { status: 404 });
   }
 
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) return NextResponse.json({ error: "API key not configured" }, { status: 500 });
+  const promptNodes = graph.nodes.map((node) => ({
+    id: node.id,
+    title: node.title,
+    description: node.description,
+    difficulty: node.difficulty,
+    estimatedHours: node.estimatedHours,
+    subTasks: (node.subTasks as Array<{ title: string; done: boolean }> | null) || [],
+    resources: (node.resources as Array<{ title: string; url: string }> | null) || [],
+  }));
+  const promptEdges = graph.edges.map((edge) => ({
+    sourceNodeId: edge.sourceNodeId,
+    targetNodeId: edge.targetNodeId,
+    type: edge.type,
+  }));
 
-  const treeContext = graph.nodes
-    .map((node) => `- ${node.title}${node.description ? `: ${node.description}` : ""}`)
-    .join("\n");
-
-  const directionPrompts: Record<string, string> = {
-    above: `Suggest a PREREQUISITE roadmap item that should happen BEFORE "${targetNode.title}". Make it a foundational goal, requirement, or milestone that this item depends on.`,
-    below: `Suggest a FOLLOW-UP roadmap item that should happen AFTER "${targetNode.title}". Make it a logical next milestone, deliverable, or execution step unlocked by it.`,
-    parallel: `Suggest a PARALLEL roadmap item at the same level as "${targetNode.title}". Make it a complementary workstream or milestone in the same phase, not a dependency of it.`,
-  };
-
-  const systemPrompt = `You are an expert project planner. You will suggest a single new roadmap item for a project roadmap.
-
-Return ONLY valid JSON with this exact structure:
-{
-  "title": "Roadmap item title (concise, 2-4 words)",
-  "description": "Goal, requirement, or milestone covered by this roadmap item (2-3 sentences)",
-  "difficulty": 3,
-  "estimatedHours": 5,
-  "subTasks": [{"title": "concrete step", "done": false}],
-  "resources": [{"title": "resource name", "url": "https://..."}]
-}
-
-Rules:
-- Title must be unique (not already in the roadmap)
-- difficulty: 1=trivial, 2=easy, 3=medium, 4=hard, 5=expert
-- 3-5 sub-tasks describing concrete execution steps or next actions
-- 1-3 real resources with valid URLs
-- Make it specific, actionable, and consistent with the requested dependency direction`;
-
-  const userPrompt = `Roadmap topic: "${graph.title}"
-
-Existing roadmap items:
-${treeContext}
-
-Current roadmap item: "${targetNode.title}" (difficulty: ${targetNode.difficulty}, description: ${targetNode.description || "none"})
-
-${directionPrompts[direction]}
-
-Return only JSON.`;
-
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "google/gemini-3-flash-preview",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      temperature: 0.7,
-      response_format: { type: "json_object" },
-    }),
-  });
-
-  if (!response.ok) {
-    return NextResponse.json({ error: `AI error: ${response.status}` }, { status: 500 });
+  const promptTargetNode = promptNodes.find((node) => node.id === nodeId);
+  if (!promptTargetNode) {
+    return NextResponse.json({ error: "Node not found" }, { status: 404 });
   }
 
-  const data = await response.json();
-  const content = data.choices[0].message.content;
+  const prompts = buildRoadmapSuggestionPrompts({
+    roadmapTitle: graph.title,
+    targetNode: promptTargetNode,
+    nodes: promptNodes,
+    edges: promptEdges,
+    direction,
+  });
+
+  let content: string;
+  try {
+    content = await requestOpenRouterJson({
+      systemPrompt: prompts.systemPrompt,
+      userPrompt: prompts.userPrompt,
+      temperature: 0.55,
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "AI error" },
+      { status: 500 }
+    );
+  }
 
   let suggested: {
     title: string;
