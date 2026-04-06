@@ -40,17 +40,17 @@ export async function POST(req: NextRequest) {
     .join("\n");
 
   const directionPrompts: Record<string, string> = {
-    above: `Suggest a PREREQUISITE skill that should be learned BEFORE "${targetNode.title}". This should be a foundational skill that leads into it.`,
-    below: `Suggest a FOLLOW-UP skill that should be learned AFTER mastering "${targetNode.title}". This should build upon it and go deeper or apply it.`,
-    parallel: `Suggest a PARALLEL skill at the same level as "${targetNode.title}". This should be a complementary skill in the same domain, not dependent on it.`,
+    above: `Suggest a PREREQUISITE roadmap item that should happen BEFORE "${targetNode.title}". Make it a foundational goal, requirement, or milestone that this item depends on.`,
+    below: `Suggest a FOLLOW-UP roadmap item that should happen AFTER "${targetNode.title}". Make it a logical next milestone, deliverable, or execution step unlocked by it.`,
+    parallel: `Suggest a PARALLEL roadmap item at the same level as "${targetNode.title}". Make it a complementary workstream or milestone in the same phase, not a dependency of it.`,
   };
 
-  const systemPrompt = `You are an expert education designer. You will suggest a single new skill node for a skill tree.
+  const systemPrompt = `You are an expert project planner. You will suggest a single new roadmap item for a project roadmap.
 
 Return ONLY valid JSON with this exact structure:
 {
-  "title": "Skill title (concise, 2-4 words)",
-  "description": "What this skill covers (2-3 sentences)",
+  "title": "Roadmap item title (concise, 2-4 words)",
+  "description": "Goal, requirement, or milestone covered by this roadmap item (2-3 sentences)",
   "difficulty": 3,
   "estimatedHours": 5,
   "subTasks": [{"title": "concrete step", "done": false}],
@@ -58,18 +58,18 @@ Return ONLY valid JSON with this exact structure:
 }
 
 Rules:
-- Title must be unique (not already in the tree)
+- Title must be unique (not already in the roadmap)
 - difficulty: 1=trivial, 2=easy, 3=medium, 4=hard, 5=expert
-- 3-5 sub-tasks
+- 3-5 sub-tasks describing concrete execution steps or next actions
 - 1-3 real resources with valid URLs
-- Make it specific and actionable`;
+- Make it specific, actionable, and consistent with the requested dependency direction`;
 
-  const userPrompt = `Tree topic: "${graph.title}"
+  const userPrompt = `Roadmap topic: "${graph.title}"
 
-Existing skills in tree:
+Existing roadmap items:
 ${treeContext}
 
-Current skill: "${targetNode.title}" (difficulty: ${targetNode.difficulty}, description: ${targetNode.description || "none"})
+Current roadmap item: "${targetNode.title}" (difficulty: ${targetNode.difficulty}, description: ${targetNode.description || "none"})
 
 ${directionPrompts[direction]}
 
