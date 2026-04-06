@@ -32,19 +32,19 @@ export default function Home() {
         <div className="relative text-center mb-6 animate-fade-up" style={{ animationDelay: "0.1s" }}>
           <h1 className="font-[family-name:var(--font-cinzel)] font-bold leading-[0.95] tracking-tight">
             <span className="block text-[clamp(2.5rem,7vw,5.5rem)] text-[var(--text-primary)]">
-              Forge Your
+              Set a Goal.
             </span>
             <span className="block text-[clamp(3.5rem,10vw,8rem)] text-shimmer mt-1">
-              Skill Tree
+              Build the Path.
             </span>
           </h1>
         </div>
 
         {/* Subtitle */}
         <p className="relative text-center text-[var(--text-secondary)] max-w-md text-base leading-relaxed mb-14 animate-fade-up" style={{ animationDelay: "0.3s" }}>
-          AI crafts the path. You master the journey.
+          Turn any goal into a clear roadmap of steps and requirements.
           <br />
-          <span className="text-sm opacity-70">Build, track, and share interactive skill trees on any topic.</span>
+          <span className="text-sm opacity-70">AI-powered skill trees that keep you on track from start to done.</span>
         </p>
 
         {/* Demo tree */}
@@ -63,7 +63,7 @@ export default function Home() {
               clipPath: "polygon(8px 0%, 100% 0%, calc(100% - 8px) 100%, 0% 100%)",
             }}
           >
-            <span className="relative z-10">Start Building</span>
+            <span className="relative z-10">Start Your Roadmap</span>
           </Link>
           <Link
             href="/login"

@@ -47,7 +47,7 @@ export default function DashboardPage() {
               onClick={() => router.push("/tree/new")}
               className="poe-btn-gold poe-btn px-4 py-1.5 text-sm font-semibold"
             >
-              + New Tree
+              + New Roadmap
             </button>
           </div>
         </div>
@@ -60,9 +60,9 @@ export default function DashboardPage() {
           animate={{ opacity: 1, y: 0 }}
           className="font-cinzel text-3xl font-bold text-poe-text-primary mb-2"
         >
-          Your Skill Trees
+          Your Roadmaps
         </motion.h1>
-        <p className="text-sm text-poe-text-dim mb-10">Forge your path. Master the journey.</p>
+        <p className="text-sm text-poe-text-dim mb-10">Your goals, broken down into clear steps and requirements.</p>
 
         {loading ? (
           <div className="text-center text-poe-text-dim py-20 font-mono text-sm">Loading...</div>
@@ -77,13 +77,13 @@ export default function DashboardPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
               </svg>
             </div>
-            <p className="text-poe-text-secondary text-lg mb-2 font-cinzel">No trees forged yet</p>
-            <p className="text-poe-text-dim text-sm mb-8">Begin your journey by creating your first skill tree</p>
+            <p className="text-poe-text-secondary text-lg mb-2 font-cinzel">No roadmaps yet</p>
+            <p className="text-poe-text-dim text-sm mb-8">Pick a goal and build your first step-by-step roadmap</p>
             <button
               onClick={() => router.push("/tree/new")}
               className="poe-btn-gold poe-btn px-8 py-3 font-cinzel font-semibold tracking-wider"
             >
-              Forge Your First Tree
+              Create Your First Roadmap
             </button>
           </motion.div>
         ) : (
