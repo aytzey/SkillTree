@@ -1,4 +1,5 @@
 import {
+  buildRoadmapContextQuestionsPrompts,
   buildRoadmapEnhancementPrompts,
   buildRoadmapGenerationPrompts,
   buildRoadmapSubTreePrompts,
@@ -56,6 +57,18 @@ const sampleEdges: RoadmapPromptEdge[] = [
 ];
 
 describe("roadmap ai prompts", () => {
+  it("creates context-question prompts from the roadmap title and description", () => {
+    const prompts = buildRoadmapContextQuestionsPrompts({
+      title: "Learn Rust",
+      topic: "I want to build backend services and understand async, ownership, and production tooling.",
+    });
+
+    expect(prompts.systemPrompt).toContain('"questions": [');
+    expect(prompts.systemPrompt).toContain("Generate exactly 3 or 4 questions.");
+    expect(prompts.userPrompt).toContain('Roadmap title: "Learn Rust"');
+    expect(prompts.userPrompt).toContain("build backend services and understand async");
+  });
+
   it("keeps both level and context in the roadmap generation prompt", () => {
     const prompts = buildRoadmapGenerationPrompts({
       topic: "Ship an internal analytics dashboard",

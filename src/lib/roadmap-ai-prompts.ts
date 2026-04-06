@@ -9,6 +9,11 @@ export interface RoadmapGenerationPromptInput {
   context?: string | null;
 }
 
+export interface RoadmapContextQuestionsPromptInput {
+  title: string;
+  topic: string;
+}
+
 export interface RoadmapSubTask {
   title: string;
   done: boolean;
@@ -132,6 +137,65 @@ export function buildRoadmapGenerationPrompts(input: RoadmapGenerationPromptInpu
       "",
       "Use the context above as planning constraints for scope, terminology, and sequencing.",
       "Balance foundations, execution, validation, and delivery at the appropriate level of detail.",
+      "Return only JSON.",
+    ].join("\n"),
+  };
+}
+
+export function buildRoadmapContextQuestionsPrompts(
+  input: RoadmapContextQuestionsPromptInput
+): PromptPair {
+  return {
+    systemPrompt: [
+      "ROLE",
+      "You are an expert roadmap discovery strategist.",
+      "Your job is to ask the user a short set of multiple-choice discovery questions before roadmap generation.",
+      "",
+      "OUTPUT CONTRACT",
+      "Return ONLY valid JSON with this exact structure:",
+      "{",
+      '  "questions": [',
+      "    {",
+      '      "id": "short_snake_case_id",',
+      '      "label": "User-facing question text?",',
+      '      "summaryLabel": "Short summary label",',
+      '      "multi": false,',
+      '      "options": [',
+      '        {"value": "short_option_id", "label": "Option label", "desc": "Optional short helper text"}',
+      "      ]",
+      "    }",
+      "  ]",
+      "}",
+      "",
+      "QUESTION RULES",
+      "- Generate exactly 3 or 4 questions.",
+      "- Every question must be materially useful for planning this specific roadmap, not generic filler.",
+      "- Tailor the questions to the roadmap title and description. Domain-specific questions are preferred when they change the roadmap shape.",
+      "- Do not ask for information already explicitly stated in the user's title or description.",
+      "- Prioritize unanswered factors that change scope, sequencing, effort, or dependency structure.",
+      "- At least one question should cover current state, constraints, target outcome, audience, deployment shape, or success criteria when relevant.",
+      "- Questions must be multiple-choice only. No freeform prompts in the JSON.",
+      "- Each question must have 3-4 options.",
+      "- Options should be concrete, distinct, and easy to choose from. Avoid overlapping wording.",
+      "- `summaryLabel` should be short and suitable for context summaries like `Timeline: 2-4 weeks`.",
+      "- `id` and option `value` fields must be lowercase snake_case.",
+      "- Keep helper descriptions short and informative.",
+      "",
+      "QUALITY BAR",
+      "- If the roadmap is about a technical skill or project, ask about the technical choices or constraints most likely to change the plan.",
+      "- If the roadmap is about learning, ask about prior experience, target depth, or practical outcome.",
+      "- If the roadmap is about building, ask about delivery scope, environment, or operational constraints.",
+      "- Avoid repeating the same idea across multiple questions.",
+      "",
+      "FINAL CHECK",
+      "Internally verify the questions are specific, diverse, and planning-relevant.",
+      "Return JSON only. No markdown, prose, or code fences.",
+    ].join("\n"),
+    userPrompt: [
+      `Roadmap title: "${input.title.trim()}"`,
+      `Roadmap description: "${input.topic.trim()}"`,
+      "",
+      "Generate the best discovery questions to refine roadmap planning for this exact goal.",
       "Return only JSON.",
     ].join("\n"),
   };

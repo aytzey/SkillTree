@@ -1,52 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-
-interface ContextQuestion {
-  id: string;
-  label: string;
-  multi: boolean;
-  options: { value: string; label: string; desc?: string }[];
-}
-
-const CONTEXT_QUESTIONS: ContextQuestion[] = [
-  {
-    id: "currentState",
-    label: "What do you have right now?",
-    multi: true,
-    options: [
-      { value: "scratch", label: "Starting from zero", desc: "No prior work on this" },
-      { value: "research", label: "Some research done", desc: "Explored options, read docs" },
-      { value: "prototype", label: "A prototype or draft", desc: "Something rough exists" },
-      { value: "existing", label: "Existing project", desc: "Extending or improving what's already built" },
-    ],
-  },
-  {
-    id: "goal",
-    label: "What's the end goal?",
-    multi: false,
-    options: [
-      { value: "learn", label: "Learn & understand", desc: "Gain knowledge or a new skill" },
-      { value: "build", label: "Build something new", desc: "Ship a product, tool, or system" },
-      { value: "improve", label: "Improve what exists", desc: "Refactor, optimize, or extend" },
-      { value: "plan", label: "Plan for a team", desc: "Coordinate work across people" },
-    ],
-  },
-  {
-    id: "timeline",
-    label: "How much time do you have?",
-    multi: false,
-    options: [
-      { value: "days", label: "A few days", desc: "Weekend project or spike" },
-      { value: "weeks", label: "A few weeks", desc: "Focused sprint" },
-      { value: "months", label: "1-3 months", desc: "Substantial effort" },
-      { value: "ongoing", label: "No fixed deadline", desc: "Ongoing or exploratory" },
-    ],
-  },
-];
+import {
+  DEFAULT_CONTEXT_QUESTIONS,
+  buildContextString,
+  filterQuestionAnswers,
+  filterQuestionCustomTexts,
+  type ContextQuestion,
+} from "@/lib/context-questions";
 
 const EASE_OUT: [number, number, number, number] = [0.25, 1, 0.5, 1];
 
@@ -121,59 +85,6 @@ function ContextQuestionCard({
   );
 }
 
-function buildContextString(
-  answers: Record<string, string[]>,
-  customTexts: Record<string, string>,
-  extraContext: string
-): string {
-  const parts: string[] = [];
-
-  // Current state
-  const state = answers.currentState || [];
-  const stateCustom = customTexts.currentState?.trim();
-  if (state.length > 0 || stateCustom) {
-    const labels = state.map((v) => {
-      const q = CONTEXT_QUESTIONS.find((q) => q.id === "currentState");
-      return q?.options.find((o) => o.value === v)?.label || v;
-    });
-    let line = `Current state: ${labels.join(", ")}`;
-    if (stateCustom) line += `. Additional detail: ${stateCustom}`;
-    parts.push(line);
-  }
-
-  // Goal
-  const goal = answers.goal || [];
-  const goalCustom = customTexts.goal?.trim();
-  if (goal.length > 0 || goalCustom) {
-    const labels = goal.map((v) => {
-      const q = CONTEXT_QUESTIONS.find((q) => q.id === "goal");
-      return q?.options.find((o) => o.value === v)?.label || v;
-    });
-    let line = `End goal: ${labels.join(", ")}`;
-    if (goalCustom) line += `. Detail: ${goalCustom}`;
-    parts.push(line);
-  }
-
-  // Timeline
-  const timeline = answers.timeline || [];
-  const timelineCustom = customTexts.timeline?.trim();
-  if (timeline.length > 0 || timelineCustom) {
-    const labels = timeline.map((v) => {
-      const q = CONTEXT_QUESTIONS.find((q) => q.id === "timeline");
-      return q?.options.find((o) => o.value === v)?.label || v;
-    });
-    let line = `Timeline: ${labels.join(", ")}`;
-    if (timelineCustom) line += `. Detail: ${timelineCustom}`;
-    parts.push(line);
-  }
-
-  if (extraContext.trim()) {
-    parts.push(`Additional context: ${extraContext.trim()}`);
-  }
-
-  return parts.join("\n");
-}
-
 export default function NewTreePage() {
   const router = useRouter();
   const [title, setTitle] = useState("");
@@ -182,9 +93,78 @@ export default function NewTreePage() {
   const [mode, setMode] = useState<"ai" | "blank" | null>(null);
 
   // Context answers
+  const [questions, setQuestions] = useState<ContextQuestion[]>([]);
   const [answers, setAnswers] = useState<Record<string, string[]>>({});
   const [customTexts, setCustomTexts] = useState<Record<string, string>>({});
   const [extraContext, setExtraContext] = useState("");
+  const [questionsLoading, setQuestionsLoading] = useState(false);
+  const [questionSource, setQuestionSource] = useState<"ai" | "fallback" | null>(null);
+  const requestCounterRef = useRef(0);
+  const lastSignatureRef = useRef("");
+
+  useEffect(() => {
+    if (mode !== "ai") return;
+
+    const trimmedTitle = title.trim();
+    const trimmedTopic = topic.trim();
+
+    if (!trimmedTitle || !trimmedTopic) {
+      lastSignatureRef.current = "";
+      setQuestions([]);
+      setQuestionSource(null);
+      setQuestionsLoading(false);
+      setAnswers({});
+      setCustomTexts({});
+      return;
+    }
+
+    const signature = `${trimmedTitle}\n${trimmedTopic}`;
+    if (signature === lastSignatureRef.current) return;
+
+    const timeoutId = window.setTimeout(async () => {
+      const requestId = requestCounterRef.current + 1;
+      requestCounterRef.current = requestId;
+      lastSignatureRef.current = signature;
+      setQuestionsLoading(true);
+
+      try {
+        const response = await fetch("/api/context-questions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: trimmedTitle, topic: trimmedTopic }),
+        });
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(typeof data.error === "string" ? data.error : "Question generation failed");
+        }
+
+        if (requestCounterRef.current !== requestId) return;
+
+        const nextQuestions = Array.isArray(data.questions) && data.questions.length > 0
+          ? data.questions as ContextQuestion[]
+          : DEFAULT_CONTEXT_QUESTIONS;
+
+        setQuestions(nextQuestions);
+        setQuestionSource(data.source === "fallback" ? "fallback" : "ai");
+        setAnswers((prev) => filterQuestionAnswers(prev, nextQuestions));
+        setCustomTexts((prev) => filterQuestionCustomTexts(prev, nextQuestions));
+      } catch {
+        if (requestCounterRef.current !== requestId) return;
+
+        setQuestions(DEFAULT_CONTEXT_QUESTIONS);
+        setQuestionSource("fallback");
+        setAnswers((prev) => filterQuestionAnswers(prev, DEFAULT_CONTEXT_QUESTIONS));
+        setCustomTexts((prev) => filterQuestionCustomTexts(prev, DEFAULT_CONTEXT_QUESTIONS));
+      } finally {
+        if (requestCounterRef.current === requestId) {
+          setQuestionsLoading(false);
+        }
+      }
+    }, 650);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [mode, title, topic, questions.length]);
 
   function handleToggle(questionId: string, value: string, multi: boolean) {
     setAnswers((prev) => {
@@ -220,7 +200,7 @@ export default function NewTreePage() {
     const tree = await treeRes.json();
 
     if (mode === "ai" && topic.trim()) {
-      const context = buildContextString(answers, customTexts, extraContext);
+      const context = buildContextString(questions, answers, customTexts, extraContext);
       const genRes = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -236,6 +216,9 @@ export default function NewTreePage() {
     Object.values(answers).some((a) => a.length > 0) ||
     Object.values(customTexts).some((t) => t.trim()) ||
     extraContext.trim();
+  const hasInputForQuestions = title.trim().length > 0 && topic.trim().length > 0;
+  const showQuestionPlaceholder = mode === "ai" && !hasInputForQuestions && questions.length === 0;
+  const isWaitingForFirstQuestionSet = mode === "ai" && hasInputForQuestions && questions.length === 0;
 
   return (
     <div className="min-h-screen bg-poe-void">
@@ -335,23 +318,62 @@ export default function NewTreePage() {
               <div className="flex-1 h-px bg-gradient-to-r from-transparent via-poe-border-mid to-transparent" />
             </div>
 
+            <div className="rounded-lg border border-poe-border-dim/80 px-3 py-2 text-[11px] text-poe-text-dim"
+              style={{ background: "rgba(20, 20, 48, 0.35)" }}
+            >
+              Context questions adapt automatically to the roadmap name and description you enter.
+            </div>
+
             {/* Context questions */}
-            {CONTEXT_QUESTIONS.map((q, i) => (
-              <motion.div
-                key={q.id}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.08, duration: 0.3, ease: EASE_OUT }}
+            {showQuestionPlaceholder && (
+              <div
+                className="rounded-lg border border-dashed border-poe-border-dim px-4 py-4 text-xs text-poe-text-dim"
+                style={{ background: "rgba(20, 20, 48, 0.2)" }}
               >
-                <ContextQuestionCard
-                  question={q}
-                  selected={answers[q.id] || []}
-                  customText={customTexts[q.id] || ""}
-                  onToggle={(value) => handleToggle(q.id, value, q.multi)}
-                  onCustomChange={(text) => handleCustomChange(q.id, text)}
-                />
-              </motion.div>
-            ))}
+                Enter a roadmap name and description first. The app will generate tailored multiple-choice questions for this goal.
+              </div>
+            )}
+
+            {isWaitingForFirstQuestionSet && questionsLoading && (
+              <div
+                className="rounded-lg border border-poe-border-dim px-4 py-4 text-xs text-poe-text-secondary"
+                style={{ background: "rgba(20, 20, 48, 0.35)" }}
+              >
+                Generating tailored planning questions...
+              </div>
+            )}
+
+            {questions.length > 0 && (
+              <>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-[10px] text-poe-text-dim font-mono uppercase tracking-wider">
+                    {questionsLoading ? "Refreshing tailored questions..." : "Tailored context questions"}
+                  </div>
+                  {questionSource === "fallback" && (
+                    <div className="text-[10px] text-poe-text-dim">
+                      Using general fallback questions
+                    </div>
+                  )}
+                </div>
+
+                {questions.map((q, i) => (
+                  <motion.div
+                    key={q.id}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.08, duration: 0.3, ease: EASE_OUT }}
+                  >
+                    <ContextQuestionCard
+                      question={q}
+                      selected={answers[q.id] || []}
+                      customText={customTexts[q.id] || ""}
+                      onToggle={(value) => handleToggle(q.id, value, q.multi)}
+                      onCustomChange={(text) => handleCustomChange(q.id, text)}
+                    />
+                  </motion.div>
+                ))}
+              </>
+            )}
 
             {/* Extra context */}
             <motion.div
@@ -379,7 +401,7 @@ export default function NewTreePage() {
               </button>
               <button
                 onClick={handleCreate}
-                disabled={loading || !title.trim() || !topic.trim()}
+                disabled={loading || questionsLoading || isWaitingForFirstQuestionSet || !title.trim() || !topic.trim()}
                 className="flex-1 poe-btn py-3 font-cinzel font-semibold tracking-wider disabled:opacity-50"
                 style={{ borderColor: "#5b5ef0", color: "#818cf8" }}
               >
@@ -399,7 +421,7 @@ export default function NewTreePage() {
                   Context preview
                 </div>
                 <pre className="text-[10px] text-poe-text-secondary leading-relaxed whitespace-pre-wrap font-mono">
-                  {buildContextString(answers, customTexts, extraContext) || "No context provided yet"}
+                  {buildContextString(questions, answers, customTexts, extraContext) || "No context provided yet"}
                 </pre>
               </motion.div>
             )}
