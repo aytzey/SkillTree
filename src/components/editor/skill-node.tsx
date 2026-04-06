@@ -147,10 +147,12 @@ function SkillNodeComponent({ data }: NodeProps) {
         {title}
       </div>
 
-      {/* Status label */}
-      <div className={`text-[10px] mt-1 uppercase tracking-wider font-mono ${statusIndicator[status].color}`}>
-        {statusIndicator[status].label}
-      </div>
+      {/* Status label — hidden on small-tier nodes to reduce visual clutter */}
+      {tier !== "small" && (
+        <div className={`text-[10px] mt-1 uppercase tracking-wider font-mono ${statusIndicator[status].color}`}>
+          {statusIndicator[status].label}
+        </div>
+      )}
 
       {/* Progress bar */}
       {status === "in_progress" && (
