@@ -115,12 +115,6 @@ The main entities are:
 
 Trees store layout state, share mode, nodes, and edges. Nodes include progress metadata, subtasks, resources, and notes. Edges define prerequisite, recommended, or optional relationships.
 
-## What Makes This Repo Worth Showing
-
-- It combines product thinking, interface polish, AI integration, and graph-based interaction design.
-- The editor goes beyond CRUD and includes meaningful workflow details like status propagation, sharing modes, and portability.
-- The codebase covers a realistic full-stack slice: authentication, data modeling, API design, UI state, and custom interaction patterns.
-
 ## Testing
 
 Unit tests are available through Jest:
