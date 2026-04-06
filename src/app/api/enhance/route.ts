@@ -41,15 +41,16 @@ export async function POST(req: NextRequest) {
     resources: node.resources,
   }));
 
-  const systemPrompt = `You are an expert education designer. You will be given a skill tree and specific nodes to enhance.
-Your job is to improve each node's content to be more detailed, actionable, and useful for a learner.
+  const systemPrompt = `You are an expert project planner. You will be given a project roadmap and specific nodes to enhance.
+Your job is to improve each node's content to be more detailed, actionable, and useful for execution.
 
 For each node, improve:
-- description: Make it clear, specific, and motivating (2-3 sentences)
-- subTasks: Break down into concrete, actionable steps (3-5 sub-tasks). Keep existing done states.
-- resources: Add real, useful learning resources with valid URLs (2-4 resources)
-- estimatedHours: Provide a realistic estimate
+- description: Clarify the goal, requirement, or milestone and why it matters (2-3 sentences)
+- subTasks: Break down into concrete execution steps or next actions (3-5 sub-tasks). Keep existing done states.
+- resources: Add real, useful implementation, planning, or reference resources with valid URLs (2-4 resources)
+- estimatedHours: Provide a realistic effort estimate
 - difficulty: Adjust if needed (1=trivial, 2=easy, 3=medium, 4=hard, 5=expert)
+- Keep the node aligned with its existing dependency context in the roadmap
 
 Return ONLY valid JSON with this structure:
 {
@@ -67,15 +68,15 @@ Return ONLY valid JSON with this structure:
 
 Do NOT change the node title, id, or positions.`;
 
-  const userPrompt = `Tree topic: "${graph.title}"
+  const userPrompt = `Roadmap topic: "${graph.title}"
 
-Full tree context (all nodes):
+Full roadmap context (all nodes):
 ${JSON.stringify(treeContext, null, 2)}
 
-Nodes to enhance:
+Roadmap items to enhance:
 ${JSON.stringify(targetNodes, null, 2)}
 
-Enhance ${nodeId ? "this specific node" : "all nodes"} to be more detailed and useful. Return only JSON.`;
+Enhance ${nodeId ? "this specific roadmap item" : "all roadmap items"} to better describe goals, requirements, milestones, dependency context, and next steps. Return only JSON.`;
 
   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
