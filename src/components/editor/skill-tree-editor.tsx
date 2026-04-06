@@ -516,7 +516,7 @@ function EditorInner({
       method: "POST",
       headers: buildRequestHeaders(true),
       body: JSON.stringify({
-        title: "New Skill",
+        title: "New Step",
         positionX: nextPosition.x,
         positionY: nextPosition.y,
       }),
@@ -903,7 +903,7 @@ function EditorInner({
         method: "POST",
         headers: buildRequestHeaders(true),
         body: JSON.stringify({
-          title: "New Skill",
+          title: "New Step",
           positionX: nextPosition.x,
           positionY: nextPosition.y,
         }),
@@ -1165,7 +1165,7 @@ function EditorInner({
           {/* Pick mode banner */}
           {pickMode && (
             <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 px-4 py-2 rounded-md border border-poe-gold-mid/60 bg-poe-obsidian/95 text-sm text-poe-gold-bright font-mono flex items-center gap-3 shadow-lg">
-              <span>Click a node to connect</span>
+              <span>Click a step to connect</span>
               <button
                 onClick={() => setPickMode(null)}
                 className="text-poe-text-dim hover:text-poe-danger text-xs transition"
