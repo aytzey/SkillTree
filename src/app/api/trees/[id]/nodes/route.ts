@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSessionUser } from "@/lib/auth";
+import { getTreeRouteAccessById } from "@/lib/tree-route-access";
+import { toPrismaJson } from "@/lib/prisma-json";
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const { id } = await params;
-  const user = await getSessionUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { tree, access } = await getTreeRouteAccessById(req, id);
 
-  const tree = await prisma.skillTree.findUnique({ where: { id } });
-  if (!tree || tree.userId !== user.id) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!tree) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!access?.canEdit) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   const body = await req.json();
   const node = await prisma.skillNode.create({
@@ -20,8 +22,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       estimatedHours: body.estimatedHours ?? null,
       positionX: body.positionX ?? 0,
       positionY: body.positionY ?? 0,
-      subTasks: body.subTasks ?? [],
-      resources: body.resources ?? [],
+      subTasks: toPrismaJson(body.subTasks ?? []),
+      resources: toPrismaJson(body.resources ?? []),
       notes: body.notes ?? null,
     },
   });

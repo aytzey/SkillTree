@@ -1,53 +1,44 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSessionUser } from "@/lib/auth";
+import { getTreeRouteAccessById } from "@/lib/tree-route-access";
+import { mergeNodeUpdates } from "@/lib/tree-editor-utils";
+import { toPrismaJson } from "@/lib/prisma-json";
 
 export async function POST(req: NextRequest) {
-  const user = await getSessionUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
   const { treeId, nodeId } = await req.json();
   if (!treeId) {
     return NextResponse.json({ error: "treeId required" }, { status: 400 });
   }
 
-  const tree = await prisma.skillTree.findUnique({
+  const { tree, access } = await getTreeRouteAccessById(req, treeId);
+  if (!tree) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!access?.canEdit) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const graph = await prisma.skillTree.findUnique({
     where: { id: treeId },
     include: { nodes: true, edges: true },
   });
-  if (!tree || tree.userId !== user.id) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+
+  if (!graph) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) return NextResponse.json({ error: "API key not configured" }, { status: 500 });
 
-  // Determine which nodes to enhance
-  const targetNodes = nodeId
-    ? tree.nodes.filter((n) => n.id === nodeId)
-    : tree.nodes;
-
+  const targetNodes = nodeId ? graph.nodes.filter((node) => node.id === nodeId) : graph.nodes;
   if (targetNodes.length === 0) {
     return NextResponse.json({ error: "No nodes found" }, { status: 404 });
   }
 
-  const treeContext = tree.nodes.map((n) => ({
-    title: n.title,
-    description: n.description,
-    difficulty: n.difficulty,
-    estimatedHours: n.estimatedHours,
-    subTasks: n.subTasks,
-    resources: n.resources,
-  }));
-
-  const nodesToEnhance = targetNodes.map((n) => ({
-    id: n.id,
-    title: n.title,
-    description: n.description,
-    difficulty: n.difficulty,
-    estimatedHours: n.estimatedHours,
-    subTasks: n.subTasks,
-    resources: n.resources,
+  const treeContext = graph.nodes.map((node) => ({
+    id: node.id,
+    title: node.title,
+    description: node.description,
+    difficulty: node.difficulty,
+    estimatedHours: node.estimatedHours,
+    subTasks: node.subTasks,
+    resources: node.resources,
   }));
 
   const systemPrompt = `You are an expert education designer. You will be given a skill tree and specific nodes to enhance.
@@ -74,26 +65,26 @@ Return ONLY valid JSON with this structure:
   ]
 }
 
-Do NOT change the node title or id. Keep existing subTask done states if they exist.`;
+Do NOT change the node title, id, or positions.`;
 
-  const userPrompt = `Tree topic: "${tree.title}"
+  const userPrompt = `Tree topic: "${graph.title}"
 
 Full tree context (all nodes):
 ${JSON.stringify(treeContext, null, 2)}
 
 Nodes to enhance:
-${JSON.stringify(nodesToEnhance, null, 2)}
+${JSON.stringify(targetNodes, null, 2)}
 
 Enhance ${nodeId ? "this specific node" : "all nodes"} to be more detailed and useful. Return only JSON.`;
 
-  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "google/gemini-2.0-flash-001",
+      model: "google/gemini-3-flash-preview",
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
@@ -103,21 +94,23 @@ Enhance ${nodeId ? "this specific node" : "all nodes"} to be more detailed and u
     }),
   });
 
-  if (!res.ok) {
-    return NextResponse.json({ error: `AI error: ${res.status}` }, { status: 500 });
+  if (!response.ok) {
+    return NextResponse.json({ error: `AI error: ${response.status}` }, { status: 500 });
   }
 
-  const data = await res.json();
+  const data = await response.json();
   const content = data.choices[0].message.content;
 
-  let parsed: { enhanced: Array<{
-    id: string;
-    description: string;
-    difficulty: number;
-    estimatedHours: number;
-    subTasks: Array<{ title: string; done: boolean }>;
-    resources: Array<{ title: string; url: string }>;
-  }> };
+  let parsed: {
+    enhanced: Array<{
+      id: string;
+      description: string;
+      difficulty: number;
+      estimatedHours: number;
+      subTasks: Array<{ title: string; done: boolean }>;
+      resources: Array<{ title: string; url: string }>;
+    }>;
+  };
 
   try {
     parsed = JSON.parse(content);
@@ -125,25 +118,47 @@ Enhance ${nodeId ? "this specific node" : "all nodes"} to be more detailed and u
     return NextResponse.json({ error: "Failed to parse AI response" }, { status: 500 });
   }
 
-  // Apply enhancements to database
+  const mergedNodes = mergeNodeUpdates(
+    graph.nodes.map((node) => ({
+      ...node,
+      status: node.status as "locked" | "available" | "in_progress" | "completed",
+      subTasks: (node.subTasks as Array<{ title: string; done: boolean }>) || [],
+      resources: (node.resources as Array<{ title: string; url: string }>) || [],
+      style: node.style as Record<string, unknown> | null,
+    })),
+    parsed.enhanced.map((enhanced) => ({
+      id: enhanced.id,
+      description: enhanced.description,
+      difficulty: Math.min(5, Math.max(1, enhanced.difficulty || 1)),
+      estimatedHours: enhanced.estimatedHours,
+      subTasks: enhanced.subTasks,
+      resources: enhanced.resources,
+    }))
+  );
+
+  const updatesById = new Map(mergedNodes.map((node) => [node.id, node]));
+
   for (const enhanced of parsed.enhanced) {
-    const existing = tree.nodes.find((n) => n.id === enhanced.id);
-    if (!existing) continue;
+    const nextNode = updatesById.get(enhanced.id);
+    if (!nextNode) continue;
 
     await prisma.skillNode.update({
       where: { id: enhanced.id },
       data: {
-        description: enhanced.description || existing.description,
-        difficulty: Math.min(5, Math.max(1, enhanced.difficulty || existing.difficulty)),
-        estimatedHours: enhanced.estimatedHours || existing.estimatedHours,
-        subTasks: enhanced.subTasks || existing.subTasks,
-        resources: enhanced.resources || existing.resources,
+        description: nextNode.description,
+        difficulty: nextNode.difficulty,
+        estimatedHours: nextNode.estimatedHours,
+        subTasks: toPrismaJson(nextNode.subTasks),
+        resources: toPrismaJson(nextNode.resources),
       },
     });
   }
 
+  const enhancedNodes = mergedNodes.filter((node) => parsed.enhanced.some((item) => item.id === node.id));
+
   return NextResponse.json({
     ok: true,
-    enhancedCount: parsed.enhanced.length,
+    enhancedCount: enhancedNodes.length,
+    nodes: enhancedNodes,
   });
 }

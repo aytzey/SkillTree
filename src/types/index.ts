@@ -1,5 +1,6 @@
 export type NodeStatus = "locked" | "available" | "in_progress" | "completed";
 export type EdgeType = "prerequisite" | "recommended" | "optional";
+export type ShareMode = "private" | "public_readonly" | "public_edit";
 
 export interface SubTask {
   title: string;
@@ -46,6 +47,7 @@ export interface SkillTreeData {
   description: string | null;
   slug: string;
   isPublic: boolean;
+  shareMode: ShareMode;
   theme: string;
   canvasState: Record<string, unknown> | null;
   nodes: SkillNodeData[];

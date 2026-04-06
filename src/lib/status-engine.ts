@@ -4,9 +4,10 @@ export function computeNodeStatuses(
   nodes: SkillNodeData[],
   edges: SkillEdgeData[]
 ): Map<string, NodeStatus> {
-  const result = new Map<string, NodeStatus>();
+  const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+  const resolved = new Map<string, NodeStatus>();
+  const visiting = new Set<string>();
 
-  // Build prerequisite map: targetNodeId -> [sourceNodeIds]
   const prereqs = new Map<string, string[]>();
   for (const edge of edges) {
     if (edge.type !== "prerequisite") continue;
@@ -15,46 +16,60 @@ export function computeNodeStatuses(
     prereqs.set(edge.targetNodeId, existing);
   }
 
-  // Compute intrinsic status for each node (ignoring prerequisites)
-  const intrinsic = new Map<string, NodeStatus>();
-  for (const node of nodes) {
-    intrinsic.set(node.id, computeIntrinsicStatus(node));
-  }
+  function resolveNodeStatus(nodeId: string): NodeStatus {
+    const cached = resolved.get(nodeId);
+    if (cached) return cached;
 
-  // Determine final status considering prerequisites
-  for (const node of nodes) {
-    const prereqIds = prereqs.get(node.id) || [];
+    const node = nodeMap.get(nodeId);
+    if (!node) return "locked";
+
+    if (visiting.has(nodeId)) {
+      return computeIntrinsicStatus(node);
+    }
+
+    visiting.add(nodeId);
+
+    const prereqIds = prereqs.get(nodeId) || [];
     if (prereqIds.length === 0) {
-      result.set(node.id, intrinsic.get(node.id)!);
-      continue;
+      const intrinsic = computeIntrinsicStatus(node);
+      resolved.set(nodeId, intrinsic);
+      visiting.delete(nodeId);
+      return intrinsic;
     }
 
-    const allPrereqsComplete = prereqIds.every(
-      (id) => intrinsic.get(id) === "completed"
-    );
-    if (!allPrereqsComplete) {
-      result.set(node.id, "locked");
-    } else {
-      result.set(node.id, intrinsic.get(node.id)!);
-    }
+    const allPrereqsComplete = prereqIds.every((id) => {
+      return resolveNodeStatus(id) === "completed";
+    });
+
+    const nextStatus = allPrereqsComplete ? computeIntrinsicStatus(node) : "locked";
+    resolved.set(nodeId, nextStatus);
+    visiting.delete(nodeId);
+    return nextStatus;
   }
 
-  return result;
+  for (const node of nodes) {
+    resolveNodeStatus(node.id);
+  }
+
+  return resolved;
+}
+
+export function computeProgressFromSubtasks(subTasks: SubTask[]): number {
+  if (subTasks.length === 0) return -1;
+  const done = subTasks.filter((t) => t.done).length;
+  return Math.round((done / subTasks.length) * 100);
 }
 
 function computeIntrinsicStatus(node: SkillNodeData): NodeStatus {
-  const subTasks = node.subTasks as SubTask[];
-  const hasSubTasks = subTasks.length > 0;
+  const subTaskProgress = computeProgressFromSubtasks(node.subTasks);
+  const effectiveProgress = subTaskProgress >= 0 ? subTaskProgress : node.progress;
 
-  if (hasSubTasks) {
-    const allDone = subTasks.every((t) => t.done);
-    const someDone = subTasks.some((t) => t.done);
-    if (allDone && node.progress >= 100) return "completed";
-    if (someDone) return "in_progress";
-    return "available";
+  if (effectiveProgress >= 100) return "completed";
+  if (effectiveProgress > 0) return "in_progress";
+
+  if (node.status === "completed" || node.status === "in_progress") {
+    return node.status;
   }
 
-  // No sub-tasks: use progress only
-  if (node.progress >= 100) return "completed";
   return "available";
 }

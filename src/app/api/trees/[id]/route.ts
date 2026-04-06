@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSessionUser } from "@/lib/auth";
+import { getTreeRouteAccessById } from "@/lib/tree-route-access";
+import { toPrismaJson } from "@/lib/prisma-json";
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   const { id } = await params;
@@ -11,8 +12,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
   if (!tree) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const user = await getSessionUser();
-  if (!tree.isPublic && tree.userId !== user?.id) {
+  const { access } = await getTreeRouteAccessById(req, id);
+  if (!access?.canView) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -21,11 +22,12 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   const { id } = await params;
-  const user = await getSessionUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { tree, access } = await getTreeRouteAccessById(req, id);
 
-  const tree = await prisma.skillTree.findUnique({ where: { id } });
-  if (!tree || tree.userId !== user.id) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!tree) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!access?.canEdit) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   const body = await req.json();
   const updated = await prisma.skillTree.update({
@@ -33,7 +35,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     data: {
       title: body.title ?? tree.title,
       description: body.description ?? tree.description,
-      canvasState: body.canvasState ?? tree.canvasState,
+      canvasState: toPrismaJson(body.canvasState ?? tree.canvasState),
     },
   });
 
@@ -42,11 +44,12 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   const { id } = await params;
-  const user = await getSessionUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { tree, access } = await getTreeRouteAccessById(req, id);
 
-  const tree = await prisma.skillTree.findUnique({ where: { id } });
-  if (!tree || tree.userId !== user.id) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!tree) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!access?.isOwner) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   await prisma.skillTree.delete({ where: { id } });
   return NextResponse.json({ ok: true });

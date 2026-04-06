@@ -1,36 +1,28 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { computeNodeStatuses } from "@/lib/status-engine";
-import { PublicTreeView } from "./public-view";
+import { SkillTreeEditor } from "@/components/editor/skill-tree-editor";
 import { toSkillTreeData } from "@/lib/tree-data";
 import { resolveTreeAccess } from "@/lib/tree-access";
 
-export async function generateMetadata({ params }: { params: { slug: string } }) {
+export default async function SharedEditPage({
+  params,
+  searchParams,
+}: {
+  params: { slug: string };
+  searchParams: { token?: string };
+}) {
   const { slug } = await params;
   const tree = await prisma.skillTree.findUnique({
     where: { slug },
-    select: { title: true, description: true },
-  });
-
-  if (!tree) return { title: "Not Found" };
-  return {
-    title: `${tree.title} — SkillTree`,
-    description: tree.description || `Skill tree: ${tree.title}`,
-  };
-}
-
-export default async function PublicViewPage({ params }: { params: { slug: string } }) {
-  const { slug } = await params;
-  const tree = await prisma.skillTree.findUnique({
-    where: { slug },
-    include: { nodes: true, edges: true, user: { select: { name: true } } },
+    include: { nodes: true, edges: true },
   });
 
   if (!tree) notFound();
 
   const access = resolveTreeAccess(tree, {
     userId: null,
-    editToken: null,
+    editToken: searchParams.token ?? null,
   });
 
   if (!access.canView) notFound();
@@ -51,19 +43,19 @@ export default async function PublicViewPage({ params }: { params: { slug: strin
   });
 
   const statuses = computeNodeStatuses(treeData.nodes, treeData.edges);
-  const nodesWithStatus = treeData.nodes.map((node) => ({
-    ...node,
-    status: statuses.get(node.id) || node.status,
-  }));
 
   return (
-    <PublicTreeView
-      title={tree.title}
-      authorName={tree.user.name}
-      nodes={nodesWithStatus}
-      edges={treeData.edges}
-      shareMode={access.shareMode}
-      isReadOnly={!access.canEdit}
+    <SkillTreeEditor
+      tree={{
+        ...treeData,
+        nodes: treeData.nodes.map((node) => ({
+          ...node,
+          status: statuses.get(node.id) || node.status,
+        })),
+      }}
+      canEdit={access.canEdit}
+      canManageShare={false}
+      sharedEditToken={access.canEdit ? searchParams.token ?? null : null}
     />
   );
 }

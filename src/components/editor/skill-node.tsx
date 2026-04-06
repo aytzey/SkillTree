@@ -1,6 +1,6 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useState } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { motion } from "framer-motion";
 import type { NodeStatus } from "@/types";
@@ -13,6 +13,26 @@ interface SkillNodePayload {
   description: string | null;
   selected?: boolean;
 }
+
+type NodeTier = "small" | "notable" | "keystone";
+
+function getNodeTier(difficulty: number): NodeTier {
+  if (difficulty >= 5) return "keystone";
+  if (difficulty >= 3) return "notable";
+  return "small";
+}
+
+const tierSizes: Record<NodeTier, string> = {
+  small: "min-w-[110px] max-w-[140px] px-2.5 py-2",
+  notable: "min-w-[140px] max-w-[180px] px-3 py-3",
+  keystone: "min-w-[170px] max-w-[220px] px-4 py-4",
+};
+
+const tierBorderRadius: Record<NodeTier, string> = {
+  small: "rounded-lg",
+  notable: "rounded-xl",
+  keystone: "rounded-2xl",
+};
 
 const stateClasses: Record<NodeStatus, string> = {
   locked: "poe-node-locked",
@@ -35,13 +55,45 @@ const statusIndicator: Record<NodeStatus, { label: string; color: string }> = {
   completed: { label: "Mastered", color: "text-poe-complete-bright" },
 };
 
+function StatusIcon({ status }: { status: NodeStatus }) {
+  const iconClass = "w-3.5 h-3.5";
+  switch (status) {
+    case "locked":
+      return (
+        <svg className={iconClass} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+          <path d="M7 11V7a5 5 0 0110 0v4" />
+        </svg>
+      );
+    case "available":
+      return (
+        <svg className={iconClass} viewBox="0 0 24 24" fill="currentColor">
+          <polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26" />
+        </svg>
+      );
+    case "in_progress":
+      return (
+        <svg className={iconClass} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+          <polygon points="13,2 3,14 12,14 11,22 21,10 12,10" />
+        </svg>
+      );
+    case "completed":
+      return (
+        <svg className={iconClass} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+          <path d="M22 11.08V12a10 10 0 11-5.93-9.14" />
+          <polyline points="22 4 12 14.01 9 11.01" />
+        </svg>
+      );
+  }
+}
+
 function DifficultyPips({ level }: { level: number }) {
   return (
     <div className="flex gap-0.5">
       {[1, 2, 3, 4, 5].map((i) => (
         <div
           key={i}
-          className={`w-1.5 h-1.5 rounded-full ${
+          className={`w-1.5 h-1.5 rounded-full transition-colors ${
             i <= level ? "bg-poe-gold-mid" : "bg-poe-border-dim"
           }`}
         />
@@ -51,17 +103,21 @@ function DifficultyPips({ level }: { level: number }) {
 }
 
 function SkillNodeComponent({ data }: NodeProps) {
-  const { title, status, difficulty, progress, selected } =
+  const { title, status, difficulty, progress, description, selected } =
     data as unknown as SkillNodePayload;
+  const [hovered, setHovered] = useState(false);
+  const tier = getNodeTier(difficulty);
 
   return (
     <motion.div
       initial={{ scale: 0.85, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
       transition={{ duration: 0.3, ease: "easeOut" }}
-      className={`poe-node ${stateClasses[status]} ${
+      className={`poe-node poe-node-${tier} ${stateClasses[status]} ${
         selected ? "poe-node-selected" : ""
-      } min-w-[130px] max-w-[180px] px-3 py-2.5 cursor-pointer`}
+      } ${tierSizes[tier]} ${tierBorderRadius[tier]} cursor-pointer relative`}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
       <Handle
         type="target"
@@ -73,22 +129,30 @@ function SkillNodeComponent({ data }: NodeProps) {
         }}
       />
 
+      {/* Header: icon + difficulty */}
       <div className="flex items-center justify-between mb-1.5">
-        <div
-          className="w-2 h-2 rounded-full"
-          style={{ background: stateRingColor[status] }}
-        />
+        <div className={`${statusIndicator[status].color} flex items-center gap-1.5`}>
+          <StatusIcon status={status} />
+          {tier === "keystone" && (
+            <span className="text-[8px] font-mono uppercase tracking-wider opacity-50">Keystone</span>
+          )}
+        </div>
         <DifficultyPips level={difficulty} />
       </div>
 
-      <div className="text-sm font-semibold text-poe-text-primary leading-tight truncate">
+      {/* Title */}
+      <div className={`font-semibold text-poe-text-primary leading-tight truncate ${
+        tier === "keystone" ? "text-base" : tier === "notable" ? "text-sm" : "text-xs"
+      }`}>
         {title}
       </div>
 
+      {/* Status label */}
       <div className={`text-[10px] mt-1 uppercase tracking-wider font-mono ${statusIndicator[status].color}`}>
         {statusIndicator[status].label}
       </div>
 
+      {/* Progress bar */}
       {status === "in_progress" && (
         <div className="mt-2 h-1 bg-poe-void rounded-full overflow-hidden">
           <motion.div
@@ -97,6 +161,21 @@ function SkillNodeComponent({ data }: NodeProps) {
             transition={{ duration: 0.5, ease: "easeOut" }}
             className="h-full rounded-full bg-gradient-to-r from-poe-progress-blue to-poe-progress-purple"
           />
+        </div>
+      )}
+
+      {/* Tooltip */}
+      {hovered && !selected && description && (
+        <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-3 z-50 pointer-events-none">
+          <div className="bg-poe-obsidian border border-poe-border-mid rounded-lg px-3 py-2 shadow-2xl max-w-[220px]">
+            <p className="text-[11px] text-poe-text-secondary leading-relaxed line-clamp-3">
+              {description}
+            </p>
+            {status === "in_progress" && (
+              <div className="mt-1.5 text-[10px] font-mono text-poe-progress-blue">{progress}% complete</div>
+            )}
+          </div>
+          <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-[6px] border-r-[6px] border-t-[6px] border-transparent border-t-poe-border-mid" />
         </div>
       )}
 

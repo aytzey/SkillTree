@@ -69,6 +69,15 @@ const config: Config = {
           "0%": { opacity: "0", transform: "translateX(20px)" },
           "100%": { opacity: "1", transform: "translateX(0)" },
         },
+        "select-ring-pulse": {
+          "0%, 100%": { opacity: "0.3", transform: "scale(1)" },
+          "50%": { opacity: "0.6", transform: "scale(1.02)" },
+        },
+        "completed-shimmer": {
+          "0%": { backgroundPosition: "200% 200%" },
+          "50%": { backgroundPosition: "0% 0%" },
+          "100%": { backgroundPosition: "200% 200%" },
+        },
       },
     },
   },

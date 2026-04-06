@@ -8,7 +8,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import { SkillNode } from "@/components/editor/skill-node";
 import { SkillEdge } from "@/components/editor/skill-edge";
-import type { SkillNodeData, SkillEdgeData } from "@/types";
+import type { SkillNodeData, SkillEdgeData, ShareMode } from "@/types";
 
 const nodeTypes = { skillNode: SkillNode };
 const edgeTypes = { skillEdge: SkillEdge };
@@ -18,9 +18,11 @@ interface PublicTreeViewProps {
   authorName: string;
   nodes: SkillNodeData[];
   edges: SkillEdgeData[];
+  shareMode: ShareMode;
+  isReadOnly: boolean;
 }
 
-export function PublicTreeView({ title, authorName, nodes, edges }: PublicTreeViewProps) {
+export function PublicTreeView({ title, authorName, nodes, edges, shareMode, isReadOnly }: PublicTreeViewProps) {
   const [selectedNode, setSelectedNode] = useState<SkillNodeData | null>(null);
 
   const flowNodes: Node[] = nodes.map((n) => ({
@@ -64,8 +66,8 @@ export function PublicTreeView({ title, authorName, nodes, edges }: PublicTreeVi
             <h1 className="text-lg font-cinzel font-semibold text-poe-text-primary">{title}</h1>
             <p className="text-xs text-poe-text-dim">by {authorName}</p>
           </div>
-          <span className="text-[10px] font-mono uppercase tracking-wider bg-poe-energy-blue/10 text-poe-energy-blue px-3 py-1 rounded border border-poe-energy-blue/20">
-            Read-only
+              <span className="text-[10px] font-mono uppercase tracking-wider bg-poe-energy-blue/10 text-poe-energy-blue px-3 py-1 rounded border border-poe-energy-blue/20">
+            {isReadOnly ? "Read-only" : shareMode === "public_edit" ? "Shared Edit" : "Public"}
           </span>
         </div>
         <div className="poe-ornate-border" />

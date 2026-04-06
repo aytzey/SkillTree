@@ -150,8 +150,10 @@ body {
   background-color: #050510;
   background-image:
     radial-gradient(ellipse 80% 60% at 50% 50%, rgba(90, 70, 20, 0.04) 0%, transparent 70%),
-    radial-gradient(circle at 30% 40%, rgba(99, 102, 241, 0.02) 0%, transparent 50%),
-    radial-gradient(circle at 70% 60%, rgba(212, 160, 23, 0.02) 0%, transparent 50%);
+    radial-gradient(circle at 30% 40%, rgba(99, 102, 241, 0.025) 0%, transparent 50%),
+    radial-gradient(circle at 70% 60%, rgba(212, 160, 23, 0.025) 0%, transparent 50%),
+    radial-gradient(ellipse 40% 30% at 20% 70%, rgba(124, 58, 237, 0.015) 0%, transparent 60%),
+    radial-gradient(ellipse 35% 25% at 80% 30%, rgba(196, 148, 26, 0.015) 0%, transparent 60%);
 }
 
 .poe-panel {
@@ -221,8 +223,117 @@ body {
 }
 
 .poe-node:not(.poe-node-locked):hover:not(.poe-node-selected) {
-  filter: brightness(1.2);
-  transform: scale(1.03);
+  filter: brightness(1.25);
+  transform: scale(1.05);
+}
+
+.poe-node-keystone:not(.poe-node-locked):hover:not(.poe-node-selected) {
+  transform: scale(1.04);
+}
+
+/* Node tier enhancements */
+.poe-node-keystone {
+  border-width: 3px;
+  background: radial-gradient(ellipse at 50% 30%, #1e1e45 0%, #12122e 100%);
+}
+
+.poe-node-keystone.poe-node-available {
+  box-shadow:
+    0 0 25px rgba(212, 160, 23, 0.4),
+    0 0 60px rgba(212, 160, 23, 0.15),
+    0 0 100px rgba(212, 160, 23, 0.05),
+    inset 0 0 30px rgba(212, 160, 23, 0.08);
+}
+
+.poe-node-keystone.poe-node-in-progress {
+  box-shadow:
+    0 0 25px rgba(91, 94, 240, 0.45),
+    0 0 60px rgba(124, 58, 237, 0.15),
+    0 0 100px rgba(91, 94, 240, 0.05),
+    inset 0 0 30px rgba(91, 94, 240, 0.08);
+}
+
+.poe-node-keystone.poe-node-completed {
+  box-shadow:
+    0 0 20px rgba(13, 150, 104, 0.4),
+    0 0 50px rgba(13, 150, 104, 0.15),
+    0 0 90px rgba(13, 150, 104, 0.05),
+    inset 0 0 25px rgba(13, 150, 104, 0.08);
+}
+
+.poe-node-notable {
+  border-width: 2px;
+}
+
+/* Enhanced selection ring — outer glow ring */
+.poe-node-selected::before {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: inherit;
+  border: 1px solid var(--select-color, rgba(196, 148, 26, 0.3));
+  opacity: 0.5;
+  animation: select-ring-pulse 2s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes select-ring-pulse {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(1.02); }
+}
+
+/* Completed node subtle shimmer */
+.poe-node-completed::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  background: linear-gradient(135deg,
+    transparent 40%,
+    rgba(52, 211, 153, 0.08) 50%,
+    transparent 60%
+  );
+  background-size: 200% 200%;
+  animation: completed-shimmer 4s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes completed-shimmer {
+  0% { background-position: 200% 200%; }
+  50% { background-position: 0% 0%; }
+  100% { background-position: 200% 200%; }
+}
+
+/* In-progress node energy pulse ring */
+.poe-node-in-progress::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  border: 1px solid rgba(91, 94, 240, 0.15);
+  animation: progress-energy 2s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes progress-energy {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.01); }
+}
+
+/* Available node golden beacon */
+.poe-node-available::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: inherit;
+  background: radial-gradient(ellipse at 50% 30%, rgba(232, 184, 40, 0.06) 0%, transparent 70%);
+  animation: available-beacon 3s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes available-beacon {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
 }
 
 .poe-section-divider {
@@ -325,6 +436,16 @@ body {
 }
 
 @keyframes edge-energy {
-  0% { stroke-dashoffset: 24; }
+  0% { stroke-dashoffset: 23; }
   100% { stroke-dashoffset: 0; }
+}
+
+@keyframes edge-energy-slow {
+  0% { stroke-dashoffset: 28; }
+  100% { stroke-dashoffset: 0; }
+}
+
+/* Canvas atmosphere — subtle nebula clouds */
+.poe-canvas-bg .react-flow__viewport {
+  filter: drop-shadow(0 0 100px rgba(91, 94, 240, 0.02));
 }

@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth";
 import { SkillTreeEditor } from "@/components/editor/skill-tree-editor";
 import { computeNodeStatuses } from "@/lib/status-engine";
-import type { SkillNodeData, SkillEdgeData } from "@/types";
+import { toSkillTreeData } from "@/lib/tree-data";
 
 export default async function TreeEditorPage({
   params,
@@ -21,38 +21,32 @@ export default async function TreeEditorPage({
 
   if (!tree || tree.userId !== user.id) redirect("/dashboard");
 
-  const nodesData: SkillNodeData[] = tree.nodes.map((n) => ({
-    ...n,
-    status: n.status as SkillNodeData["status"],
-    subTasks: (n.subTasks as unknown as SkillNodeData["subTasks"]) || [],
-    resources: (n.resources as unknown as SkillNodeData["resources"]) || [],
-    style: n.style as Record<string, unknown> | null,
-  }));
+  const treeData = toSkillTreeData({
+    ...tree,
+    shareMode: tree.shareMode,
+    editTokenHash: tree.editTokenHash,
+    canvasState: tree.canvasState as Record<string, unknown> | null,
+    nodes: tree.nodes.map((node) => ({
+      ...node,
+      style: node.style as Record<string, unknown> | null,
+    })),
+    edges: tree.edges.map((edge) => ({
+      ...edge,
+      style: edge.style as Record<string, unknown> | null,
+    })),
+  });
 
-  const edgesData: SkillEdgeData[] = tree.edges.map((e) => ({
-    ...e,
-    type: e.type as SkillEdgeData["type"],
-    style: e.style as Record<string, unknown> | null,
-  }));
-
-  const statuses = computeNodeStatuses(nodesData, edgesData);
-  const nodesWithStatus = nodesData.map((n) => ({
+  const statuses = computeNodeStatuses(treeData.nodes, treeData.edges);
+  const nodesWithStatus = treeData.nodes.map((n) => ({
     ...n,
     status: statuses.get(n.id) || n.status,
   }));
 
-  const treeData = {
-    id: tree.id,
-    userId: tree.userId,
-    title: tree.title,
-    description: tree.description,
-    slug: tree.slug,
-    isPublic: tree.isPublic,
-    theme: tree.theme,
-    canvasState: tree.canvasState as Record<string, unknown> | null,
-    nodes: nodesWithStatus,
-    edges: edgesData,
-  };
-
-  return <SkillTreeEditor tree={treeData} />;
+  return (
+    <SkillTreeEditor
+      tree={{ ...treeData, nodes: nodesWithStatus }}
+      canEdit
+      canManageShare
+    />
+  );
 }

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth";
 import { generateSkillTree } from "@/lib/openrouter";
 import { autoLayout } from "@/lib/layout-engine";
+import { toPrismaJson } from "@/lib/prisma-json";
 
 export async function POST(req: NextRequest) {
   const user = await getSessionUser();
@@ -51,8 +52,8 @@ export async function POST(req: NextRequest) {
         estimatedHours: gn.estimatedHours,
         positionX: pos.x,
         positionY: pos.y,
-        subTasks: gn.subTasks || [],
-        resources: gn.resources || [],
+        subTasks: toPrismaJson(gn.subTasks || []),
+        resources: toPrismaJson(gn.resources || []),
       },
     });
 
