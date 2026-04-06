@@ -46,17 +46,17 @@ export function JourneyStatusBar({ nodes, selectedNodeTitle }: JourneyStatusBarP
           />
         </div>
         <span className="text-[10px] text-poe-text-dim font-mono whitespace-nowrap">
-          {completed}/{total} mastered
+          {completed}/{total} steps complete
         </span>
       </div>
 
       {/* Status counts with glow dots */}
       <div className="flex items-center gap-4 text-[10px] font-mono text-poe-text-dim">
-        <span className="flex items-center gap-1.5" title="Mastered">
+        <span className="flex items-center gap-1.5" title="Done">
           <span className="w-2 h-2 rounded-full bg-poe-complete-green shadow-[0_0_4px_rgba(13,150,104,0.5)]" />
           {completed}
         </span>
-        <span className="flex items-center gap-1.5" title="Active">
+        <span className="flex items-center gap-1.5" title="In Progress">
           <span className="w-2 h-2 rounded-full bg-poe-progress-blue shadow-[0_0_4px_rgba(91,94,240,0.5)]" />
           {inProgress}
         </span>
@@ -64,7 +64,7 @@ export function JourneyStatusBar({ nodes, selectedNodeTitle }: JourneyStatusBarP
           <span className="w-2 h-2 rounded-full bg-poe-gold-mid shadow-[0_0_4px_rgba(196,148,26,0.5)]" />
           {available}
         </span>
-        <span className="flex items-center gap-1.5" title="Sealed">
+        <span className="flex items-center gap-1.5" title="Blocked">
           <span className="w-2 h-2 rounded-full bg-poe-locked-mid" />
           {locked}
         </span>
