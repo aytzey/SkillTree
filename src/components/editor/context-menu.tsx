@@ -18,7 +18,7 @@ const statusActions: { value: NodeStatus; label: string; icon: string }[] = [
   { value: "locked", label: "Set Sealed", icon: "🔒" },
   { value: "available", label: "Set Ready", icon: "⭐" },
   { value: "in_progress", label: "Set Active", icon: "⚡" },
-  { value: "completed", label: "Set Mastered", icon: "✓" },
+  { value: "completed", label: "Set Done", icon: "✓" },
 ];
 
 export function ContextMenu({

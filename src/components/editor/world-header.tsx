@@ -100,7 +100,7 @@ export function WorldHeader({
               />
               <span className="text-xs text-poe-text-dim font-mono">{saveLabels[saveState]}</span>
               <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded border border-poe-border-mid text-poe-text-dim">
-                {isReadOnly ? "View mode" : "Edit mode"}
+                {isReadOnly ? "Viewing" : "Editing"}
               </span>
               {!canManageShare && shareMode !== "private" && (
                 <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded border border-poe-energy-blue/20 text-poe-energy-blue bg-poe-energy-blue/10">
@@ -117,7 +117,7 @@ export function WorldHeader({
               onClick={onToggleMode}
               className="poe-btn px-3 py-1.5 text-sm"
             >
-              {isReadOnly ? "Switch to Edit" : "Switch to View"}
+              {isReadOnly ? "Edit" : "View"}
             </button>
           )}
 

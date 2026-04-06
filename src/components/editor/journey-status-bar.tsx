@@ -46,13 +46,13 @@ export function JourneyStatusBar({ nodes, selectedNodeTitle }: JourneyStatusBarP
           />
         </div>
         <span className="text-[10px] text-poe-text-dim font-mono whitespace-nowrap">
-          {completed}/{total} mastered
+          {completed}/{total} steps done
         </span>
       </div>
 
       {/* Status counts with glow dots */}
       <div className="flex items-center gap-4 text-[10px] font-mono text-poe-text-dim">
-        <span className="flex items-center gap-1.5" title="Mastered">
+        <span className="flex items-center gap-1.5" title="Done">
           <span className="w-2 h-2 rounded-full bg-poe-complete-green shadow-[0_0_4px_rgba(13,150,104,0.5)]" />
           {completed}
         </span>
