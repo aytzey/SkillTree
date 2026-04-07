@@ -11,8 +11,14 @@ import {
   filterQuestionCustomTexts,
   type ContextQuestion,
 } from "@/lib/context-questions";
+import {
+  ROADMAP_MICROCOPY,
+  ROADMAP_PRIMARY_CTA_COPY,
+  ROADMAP_SECTION_LABELS,
+} from "@/lib/copy-constants";
 
 const EASE_OUT: [number, number, number, number] = [0.25, 1, 0.5, 1];
+const CREATION_STEPS = ["Goal", "Mode", "Context", "Confirm"] as const;
 
 function ContextQuestionCard({
   question,
@@ -219,6 +225,11 @@ export default function NewTreePage() {
   const hasInputForQuestions = title.trim().length > 0 && topic.trim().length > 0;
   const showQuestionPlaceholder = mode === "ai" && !hasInputForQuestions && questions.length === 0;
   const isWaitingForFirstQuestionSet = mode === "ai" && hasInputForQuestions && questions.length === 0;
+  const goalReady = title.trim().length > 0;
+  const confirmReady = mode === "blank"
+    ? goalReady
+    : mode === "ai" && goalReady && topic.trim().length > 0;
+  const currentStep = !goalReady ? 0 : !mode ? 1 : !confirmReady ? 2 : 3;
 
   return (
     <div className="min-h-screen bg-poe-void">
@@ -242,16 +253,44 @@ export default function NewTreePage() {
           animate={{ opacity: 1, y: 0 }}
           className="font-cinzel text-3xl font-bold text-poe-text-primary mb-2 text-center"
         >
-          New Roadmap
+          {ROADMAP_SECTION_LABELS.creationTitle}
         </motion.h1>
-        <p className="text-sm text-poe-text-dim text-center mb-10">Define your goal and we&apos;ll map the steps to get there</p>
+        <p className="text-sm text-poe-text-dim text-center mb-6">{ROADMAP_MICROCOPY.creationSubtitle}</p>
+
+        <div
+          aria-label="Creation steps"
+          data-testid="step-indicator"
+          className="grid grid-cols-4 gap-2 mb-8"
+        >
+          {CREATION_STEPS.map((step, index) => {
+            const complete = index < currentStep;
+            const active = index === currentStep;
+            return (
+              <div
+                key={step}
+                data-step={step.toLowerCase()}
+                className={`rounded-lg border px-3 py-2 text-center text-[10px] uppercase tracking-[0.25em] font-mono transition-colors ${
+                  active
+                    ? "border-poe-gold-mid text-poe-gold-bright bg-poe-gold-mid/10"
+                    : complete
+                      ? "border-poe-energy-blue/40 text-poe-energy-blue bg-poe-energy-blue/10"
+                      : "border-poe-border-dim text-poe-text-dim"
+                }`}
+              >
+                {step}
+              </div>
+            );
+          })}
+        </div>
 
         {/* Title input */}
         <div className="mb-8">
-          <label className="block text-[10px] text-poe-text-dim mb-1.5 uppercase tracking-wider font-mono">
-            Goal
+          <label htmlFor="roadmap-title" className="block text-[10px] text-poe-text-dim mb-1.5 uppercase tracking-wider font-mono">
+            {ROADMAP_SECTION_LABELS.creationTitleField}
           </label>
           <input
+            id="roadmap-title"
+            aria-label="Goal"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="e.g., Learn Rust Programming"
@@ -268,6 +307,7 @@ export default function NewTreePage() {
           >
             <button
               onClick={() => setMode("ai")}
+              disabled={!goalReady}
               className="border border-poe-border-dim rounded-lg p-6 text-center transition hover:border-poe-energy-blue group"
               style={{ background: "linear-gradient(180deg, #141430 0%, #0e0e24 100%)" }}
             >
@@ -277,11 +317,12 @@ export default function NewTreePage() {
                 </svg>
               </div>
               <div className="font-cinzel text-sm font-semibold text-poe-text-primary mb-1">AI Generate</div>
-              <div className="text-[10px] text-poe-text-dim">Describe your goal, AI builds the roadmap</div>
+              <div className="text-[10px] text-poe-text-dim">{ROADMAP_MICROCOPY.creationAiModeDescription}</div>
             </button>
 
             <button
               onClick={() => setMode("blank")}
+              disabled={!goalReady}
               className="border border-poe-border-dim rounded-lg p-6 text-center transition hover:border-poe-gold-dim group"
               style={{ background: "linear-gradient(180deg, #141430 0%, #0e0e24 100%)" }}
             >
@@ -291,9 +332,15 @@ export default function NewTreePage() {
                 </svg>
               </div>
               <div className="font-cinzel text-sm font-semibold text-poe-text-primary mb-1">Blank Canvas</div>
-              <div className="text-[10px] text-poe-text-dim">Start from scratch</div>
+              <div className="text-[10px] text-poe-text-dim">{ROADMAP_MICROCOPY.creationBlankModeDescription}</div>
             </button>
           </motion.div>
+        )}
+
+        {!goalReady && (
+          <p className="text-xs text-poe-text-dim mt-3 text-center">
+            Start with a goal first, then choose how you want to build the roadmap.
+          </p>
         )}
 
         {/* AI mode */}
@@ -301,8 +348,10 @@ export default function NewTreePage() {
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
             {/* Topic */}
             <div>
-              <label className="block text-[10px] text-poe-text-dim mb-1.5 uppercase tracking-wider font-mono">Describe Your Goal</label>
+              <label htmlFor="roadmap-topic" className="block text-[10px] text-poe-text-dim mb-1.5 uppercase tracking-wider font-mono">{ROADMAP_SECTION_LABELS.creationTopicField}</label>
               <textarea
+                id="roadmap-topic"
+                aria-label="Describe Your Goal"
                 value={topic}
                 onChange={(e) => setTopic(e.target.value)}
                 placeholder="What do you want to achieve? e.g., Build production-ready Rust web services from scratch"
@@ -336,6 +385,9 @@ export default function NewTreePage() {
 
             {isWaitingForFirstQuestionSet && questionsLoading && (
               <div
+                role="status"
+                aria-busy="true"
+                data-testid="questions-loading"
                 className="rounded-lg border border-poe-border-dim px-4 py-4 text-xs text-poe-text-secondary"
                 style={{ background: "rgba(20, 20, 48, 0.35)" }}
               >
@@ -405,7 +457,7 @@ export default function NewTreePage() {
                 className="flex-1 poe-btn py-3 font-cinzel font-semibold tracking-wider disabled:opacity-50"
                 style={{ borderColor: "#5b5ef0", color: "#818cf8" }}
               >
-                {loading ? "Building roadmap..." : "Generate Roadmap"}
+                {loading ? "Building roadmap..." : ROADMAP_PRIMARY_CTA_COPY.creationAi}
               </button>
             </div>
 
@@ -439,9 +491,29 @@ export default function NewTreePage() {
               disabled={loading || !title.trim()}
               className="flex-1 poe-btn-gold poe-btn py-3 font-cinzel font-semibold tracking-wider disabled:opacity-50"
             >
-              {loading ? "Creating..." : "Create Blank Roadmap"}
+              {loading ? "Creating..." : ROADMAP_PRIMARY_CTA_COPY.creationBlank}
             </button>
           </motion.div>
+        )}
+
+        {mode && (
+          <div className="mt-6 rounded-lg border border-poe-border-dim/80 px-4 py-4 text-sm text-poe-text-secondary" style={{ background: "rgba(20, 20, 48, 0.35)" }}>
+            <div className="text-[10px] text-poe-text-dim font-mono uppercase tracking-wider mb-2">Review before creating</div>
+            <div className="space-y-1">
+              <p><span className="text-poe-text-dim">Goal:</span> {title || "Not set yet"}</p>
+              <p><span className="text-poe-text-dim">Mode:</span> {mode === "ai" ? "AI-guided roadmap" : "Blank canvas"}</p>
+              <p>
+                <span className="text-poe-text-dim">Confirm:</span>{" "}
+                {mode === "ai"
+                  ? topic.trim()
+                    ? questionsLoading
+                      ? "Tailored questions are loading"
+                      : `${questions.length} tailored questions ready`
+                    : "Add your goal details to unlock tailored questions"
+                  : "Your roadmap will start empty and ready to edit"}
+              </p>
+            </div>
+          </div>
         )}
       </div>
     </div>

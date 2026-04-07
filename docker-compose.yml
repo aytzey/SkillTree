@@ -1,0 +1,45 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: skiltree
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - skiltree_postgres_data:/var/lib/postgresql/data
+    networks:
+      - skiltree_internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d skiltree"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/skiltree
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-local-compose-secret}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+    ports:
+      - "3000:3000"
+    networks:
+      - skiltree_internal
+
+volumes:
+  skiltree_postgres_data:
+
+networks:
+  skiltree_internal:
+    external: true
+    name: skiltree_skiltree_internal

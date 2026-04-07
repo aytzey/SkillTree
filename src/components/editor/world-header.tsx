@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { useState, useEffect, useRef } from "react";
 import type { ShareMode } from "@/types";
 
 type SaveState = "idle" | "unsaved" | "saving" | "saved" | "failed";
@@ -65,6 +64,8 @@ export function WorldHeader({
   shareFeedback,
 }: WorldHeaderProps) {
   const [updatingShare, setUpdatingShare] = useState(false);
+  const [overflowOpen, setOverflowOpen] = useState(false);
+  const overflowRef = useRef<HTMLDivElement>(null);
 
   async function handleShareModeChange(mode: ShareMode) {
     setUpdatingShare(true);
@@ -75,6 +76,25 @@ export function WorldHeader({
     }
   }
 
+  function closeOverflow() {
+    setOverflowOpen(false);
+  }
+
+  useEffect(() => {
+    if (!overflowOpen) return;
+
+    function handleMouseDown(e: MouseEvent) {
+      if (overflowRef.current && !overflowRef.current.contains(e.target as Node)) {
+        closeOverflow();
+      }
+    }
+
+    document.addEventListener("mousedown", handleMouseDown);
+    return () => document.removeEventListener("mousedown", handleMouseDown);
+  }, [overflowOpen]);
+
+  const hasSecondaryActions = canEdit || canManageShare;
+
   return (
     <div className="poe-header relative z-20">
       <div className="poe-ornate-border" />
@@ -83,7 +103,7 @@ export function WorldHeader({
         <div className="flex items-center gap-4 min-w-0">
           <Link
             href="/dashboard"
-            className="text-poe-text-dim hover:text-poe-gold-mid transition-colors duration-200 text-sm"
+            className="text-poe-text-dim hover:text-poe-gold-mid transition text-sm"
             title="Back to dashboard"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -95,32 +115,14 @@ export function WorldHeader({
               {title}
             </h2>
             <div className="flex items-center gap-2 mt-1">
-              <motion.span
-                key={saveState}
+              <span
                 className={saveDotClass[saveState]}
                 style={{ width: 8, height: 8, borderRadius: "50%", display: "inline-block" }}
-                initial={{ scale: 0.6, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ duration: 0.2, ease: [0.25, 1, 0.5, 1] }}
               />
-              <AnimatePresence mode="wait">
-                <motion.span
-                  key={saveState}
-                  className="text-xs text-poe-text-dim font-mono"
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 4 }}
-                  transition={{ duration: 0.15 }}
-                >
-                  {saveLabels[saveState]}
-                </motion.span>
-              </AnimatePresence>
-              <motion.span
-                layout
-                className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded border border-poe-border-mid text-poe-text-dim"
-              >
-                {isReadOnly ? "Viewing" : "Editing"}
-              </motion.span>
+              <span className="text-xs text-poe-text-dim font-mono">{saveLabels[saveState]}</span>
+              <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded border border-poe-border-mid text-poe-text-dim">
+                {isReadOnly ? "View mode" : "Edit mode"}
+              </span>
               {!canManageShare && shareMode !== "private" && (
                 <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded border border-poe-energy-blue/20 text-poe-energy-blue bg-poe-energy-blue/10">
                   {shareModeLabels[shareMode]}
@@ -131,46 +133,10 @@ export function WorldHeader({
         </div>
 
         <div className="flex flex-wrap items-center justify-end gap-2">
-          {canEdit && (
-            <button
-              onClick={onToggleMode}
-              className="poe-btn px-3 py-1.5 text-sm"
-            >
-              {isReadOnly ? "Edit" : "View"}
-            </button>
-          )}
-
-          <button onClick={onExportPortable} className="poe-btn px-3 py-1.5 text-sm">
-            Export JSON
-          </button>
-
-          <button onClick={onExportBackup} className="poe-btn px-3 py-1.5 text-sm">
-            Backup JSON
-          </button>
-
-          {canManageShare && (
-            <button onClick={onImportNew} className="poe-btn px-3 py-1.5 text-sm">
-              Import New
-            </button>
-          )}
-
-          {canEdit && (
-            <>
-              <button
-                onClick={onImportReplace}
-                disabled={isReadOnly}
-                className="poe-btn px-3 py-1.5 text-sm disabled:opacity-50"
-              >
-                Replace Tree
-              </button>
-              <button
-                onClick={onAddNode}
-                disabled={isReadOnly}
-                className="poe-btn px-3 py-1.5 text-sm disabled:opacity-50"
-              >
-                + Node
-              </button>
-            </>
+          {shareFeedback && (
+            <span className="text-[10px] font-mono text-poe-energy-blue max-w-[220px] truncate">
+              {shareFeedback}
+            </span>
           )}
 
           {canManageShare && (
@@ -186,32 +152,107 @@ export function WorldHeader({
             </select>
           )}
 
-          <AnimatePresence>
-            {shareFeedback && (
-              <motion.span
-                initial={{ opacity: 0, x: 8 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -8 }}
-                transition={{ duration: 0.2, ease: [0.25, 1, 0.5, 1] }}
-                className="text-[10px] font-mono text-poe-energy-blue max-w-[220px] truncate"
-              >
-                {shareFeedback}
-              </motion.span>
-            )}
-          </AnimatePresence>
+          {canEdit && (
+            <button
+              onClick={onAddNode}
+              disabled={isReadOnly}
+              className="poe-btn px-3 py-1.5 text-sm disabled:opacity-50"
+            >
+              + Node
+            </button>
+          )}
 
           {canEdit && (
-            <motion.button
+            <button
               onClick={onSave}
               disabled={isReadOnly || saveState === "saving"}
-              className={`poe-btn-gold px-4 py-1.5 text-sm font-semibold disabled:opacity-50 poe-btn ${
-                saveState === "saved" ? "poe-save-success" : ""
-              } ${saveState === "saving" ? "poe-save-working" : ""}`}
+              className="poe-btn-gold px-4 py-1.5 text-sm font-semibold disabled:opacity-50 poe-btn"
               title="Save positions (Ctrl+S)"
-              whileTap={{ scale: 0.96 }}
             >
               {saveState === "saving" ? "Saving..." : "Save"}
-            </motion.button>
+            </button>
+          )}
+
+          {hasSecondaryActions && (
+            <div className="relative" ref={overflowRef}>
+              <button
+                onClick={() => setOverflowOpen((value) => !value)}
+                className="poe-btn px-2 py-1.5 text-sm"
+                aria-label="More actions"
+                aria-haspopup="menu"
+                aria-expanded={overflowOpen}
+              >
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <circle cx="4" cy="10" r="1.5" />
+                  <circle cx="10" cy="10" r="1.5" />
+                  <circle cx="16" cy="10" r="1.5" />
+                </svg>
+              </button>
+
+              {overflowOpen && (
+                <div
+                  role="menu"
+                  className="absolute right-0 top-full mt-1 z-50 flex flex-col gap-1 min-w-[160px] bg-poe-surface border border-poe-border-mid rounded p-2 shadow-lg"
+                >
+                  {canEdit && (
+                    <button
+                      onClick={() => {
+                        onToggleMode();
+                        closeOverflow();
+                      }}
+                      className="poe-btn px-3 py-1.5 text-sm text-left"
+                    >
+                      {isReadOnly ? "Switch to Edit" : "Switch to View"}
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => {
+                      onExportPortable();
+                      closeOverflow();
+                    }}
+                    className="poe-btn px-3 py-1.5 text-sm text-left"
+                  >
+                    Export JSON
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      onExportBackup();
+                      closeOverflow();
+                    }}
+                    className="poe-btn px-3 py-1.5 text-sm text-left"
+                  >
+                    Backup JSON
+                  </button>
+
+                  {canManageShare && (
+                    <button
+                      onClick={() => {
+                        onImportNew();
+                        closeOverflow();
+                      }}
+                      className="poe-btn px-3 py-1.5 text-sm text-left"
+                    >
+                      Import New
+                    </button>
+                  )}
+
+                  {canEdit && (
+                    <button
+                      onClick={() => {
+                        onImportReplace();
+                        closeOverflow();
+                      }}
+                      disabled={isReadOnly}
+                      className="poe-btn px-3 py-1.5 text-sm text-left disabled:opacity-50"
+                    >
+                      Replace Tree
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>

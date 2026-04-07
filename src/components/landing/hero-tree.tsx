@@ -81,9 +81,12 @@ export function HeroTree() {
       {/* Nodes */}
       {demoNodes.map((node, i) => {
         const s = statusStyles[node.status];
+        const delay = 0.6 + i * 0.12;
         return (
           <motion.div
             key={node.id}
+            data-testid="hero-node"
+            data-delay={delay}
             className="absolute px-5 py-2.5 text-center min-w-[90px] border font-[family-name:var(--font-cinzel)] text-sm font-semibold tracking-wide"
             style={{
               left: node.x,
@@ -97,7 +100,7 @@ export function HeroTree() {
             }}
             initial={{ scale: 0.7, opacity: 0 }}
             animate={{ scale: 1, opacity: node.status === "locked" ? 0.35 : 1 }}
-            transition={{ duration: 0.5, delay: 0.6 + i * 0.1, type: "spring", stiffness: 200, damping: 20 }}
+            transition={{ duration: 0.5, delay, type: "spring", stiffness: 200, damping: 20 }}
           >
             {node.title}
           </motion.div>

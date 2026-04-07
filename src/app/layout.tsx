@@ -8,8 +8,8 @@ const sourceSans = Source_Sans_3({ subsets: ["latin"], variable: "--font-source"
 const jetbrains = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jetbrains" });
 
 export const metadata: Metadata = {
-  title: "SkillTree — Interactive Skill Tree Builder",
-  description: "Create beautiful, game-like skill trees on any topic with AI",
+  title: "SkillTree — Goal-first roadmap builder",
+  description: "Turn any goal into a clear roadmap of steps, requirements, and progress with an interactive visual planner.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

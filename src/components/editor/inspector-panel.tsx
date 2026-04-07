@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { computeProgressFromSubtasks } from "@/lib/status-engine";
+import { ROADMAP_COPY } from "@/lib/copy-constants";
 import type { SkillNodeData, NodeStatus, SubTask, Resource, EdgeType } from "@/types";
 
 type SaveState = "idle" | "unsaved" | "saving" | "saved" | "failed";
@@ -73,14 +74,14 @@ function EmptyState({
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
         </svg>
       </motion.div>
-      <p className="text-sm text-poe-text-secondary mb-1">No step selected</p>
-      <p className="text-xs text-poe-text-dim mb-5">Click a step on the canvas to inspect it</p>
+      <p className="text-sm font-semibold text-poe-text-secondary mb-1">{ROADMAP_COPY.microcopy.editorEmptyTitle}</p>
+      <p className="text-xs text-poe-text-dim mb-5">{ROADMAP_COPY.microcopy.editorEmptyBody}</p>
       {canCreate ? (
         <button
           onClick={onAddNode}
           className="poe-btn px-4 py-2 text-xs"
         >
-          + Create New Step
+          {ROADMAP_COPY.ctas.editorEmpty}
         </button>
       ) : (
         <p className="text-[11px] text-poe-text-dim max-w-[180px]">
