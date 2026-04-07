@@ -202,28 +202,44 @@ function EditorInner({
   }, [shareFeedback]);
 
   useEffect(() => {
-    setNodes((currentNodes) =>
-      currentNodes.map((node) => ({
-        ...node,
-        data: { ...node.data, selected: node.id === selectedNodeId },
-      }))
-    );
+    setNodes((currentNodes) => {
+      let changed = false;
+      const next = currentNodes.map((node) => {
+        const shouldBeSelected = node.id === selectedNodeId;
+        const isSelected =
+          (node.data as { selected?: boolean }).selected === true;
+        if (shouldBeSelected === isSelected) return node;
+        changed = true;
+        return {
+          ...node,
+          data: { ...node.data, selected: shouldBeSelected },
+        };
+      });
+      return changed ? next : currentNodes;
+    });
   }, [selectedNodeId, setNodes]);
 
   useEffect(() => {
-    const positions = new Map(
-      nodes.map((node) => [node.id, { x: node.position.x, y: node.position.y }])
-    );
-
-    treeDataRef.current.nodes = treeDataRef.current.nodes.map((node) => {
-      const nextPosition = positions.get(node.id);
-      if (!nextPosition) return node;
+    let changed = false;
+    const updated = treeDataRef.current.nodes.map((node) => {
+      const flowNode = nodes.find((n) => n.id === node.id);
+      if (!flowNode) return node;
+      if (
+        flowNode.position.x === node.positionX &&
+        flowNode.position.y === node.positionY
+      ) {
+        return node;
+      }
+      changed = true;
       return {
         ...node,
-        positionX: nextPosition.x,
-        positionY: nextPosition.y,
+        positionX: flowNode.position.x,
+        positionY: flowNode.position.y,
       };
     });
+    if (changed) {
+      treeDataRef.current.nodes = updated;
+    }
   }, [nodes]);
 
   const buildRequestHeaders = useCallback(

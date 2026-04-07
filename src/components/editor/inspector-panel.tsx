@@ -362,10 +362,13 @@ export function InspectorPanel({
   const [subTreeDepth, setSubTreeDepth] = useState(2);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadedNodeIdRef = useRef<string | null>(null);
+  const loadedSnapshotRef = useRef<string>("");
+  const justLoadedRef = useRef(false);
   const inputsDisabled = !canEdit || isReadOnly;
 
   useEffect(() => {
     if (!node) return;
+    justLoadedRef.current = true;
     loadedNodeIdRef.current = node.id;
     setTitle(node.title);
     setDescription(node.description || "");
@@ -377,18 +380,7 @@ export function InspectorPanel({
     setNotes(node.notes || "");
     setStatus(node.status);
     setSaveState("idle");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [node?.id]);
-
-  // Auto-save with debounce
-  useEffect(() => {
-    if (!node || loadedNodeIdRef.current !== node.id || inputsDisabled) return;
-
-    const currentData = JSON.stringify({
-      title, description, difficulty, estimatedHours, progress, status,
-      subTasks, resources, notes,
-    });
-    const originalData = JSON.stringify({
+    loadedSnapshotRef.current = JSON.stringify({
       title: node.title,
       description: node.description || "",
       difficulty: node.difficulty,
@@ -399,8 +391,30 @@ export function InspectorPanel({
       resources: node.resources,
       notes: node.notes || "",
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [node?.id]);
 
-    if (currentData === originalData) return;
+  // Auto-save with debounce
+  useEffect(() => {
+    if (!node || loadedNodeIdRef.current !== node.id || inputsDisabled) return;
+
+    // Skip the run that immediately follows loading a node — local state
+    // setters from the loader effect haven't been applied yet, so comparing
+    // would give a false-positive "unsaved" state on every node click.
+    if (justLoadedRef.current) {
+      justLoadedRef.current = false;
+      return;
+    }
+
+    const currentData = JSON.stringify({
+      title, description, difficulty, estimatedHours, progress, status,
+      subTasks, resources, notes,
+    });
+
+    if (currentData === loadedSnapshotRef.current) {
+      setSaveState((prev) => (prev === "unsaved" ? "idle" : prev));
+      return;
+    }
 
     setSaveState("unsaved");
 
@@ -420,6 +434,7 @@ export function InspectorPanel({
           resources,
           notes: notes || null,
         });
+        loadedSnapshotRef.current = currentData;
         setSaveState("saved");
         setTimeout(() => setSaveState("idle"), 1500);
       } catch {
@@ -431,7 +446,7 @@ export function InspectorPanel({
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, description, difficulty, estimatedHours, progress, status, subTasks, resources, notes, node, inputsDisabled, onUpdate]);
+  }, [title, description, difficulty, estimatedHours, progress, status, subTasks, resources, notes, node?.id, inputsDisabled, onUpdate]);
 
   // --- Manual save (instant) ---
   async function saveNow() {
@@ -450,6 +465,10 @@ export function InspectorPanel({
         subTasks,
         resources,
         notes: notes || null,
+      });
+      loadedSnapshotRef.current = JSON.stringify({
+        title, description, difficulty, estimatedHours, progress, status,
+        subTasks, resources, notes,
       });
       setSaveState("saved");
       setTimeout(() => setSaveState("idle"), 1500);
