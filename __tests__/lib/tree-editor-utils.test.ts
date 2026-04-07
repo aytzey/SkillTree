@@ -1,5 +1,9 @@
-import { findAvailableNodePosition, mergeNodeUpdates } from "@/lib/tree-editor-utils";
-import type { SkillNodeData } from "@/types";
+import {
+  applyNodeUpdateWithStatuses,
+  findAvailableNodePosition,
+  mergeNodeUpdates,
+} from "@/lib/tree-editor-utils";
+import type { SkillEdgeData, SkillNodeData } from "@/types";
 
 const existingNode: SkillNodeData = {
   id: "node-1",
@@ -18,6 +22,25 @@ const existingNode: SkillNodeData = {
   resources: [],
   notes: null,
   subTreeId: null,
+};
+
+const dependentNode: SkillNodeData = {
+  ...existingNode,
+  id: "node-2",
+  title: "Dependent",
+  progress: 0,
+  status: "locked",
+  positionX: 680,
+  positionY: 180,
+};
+
+const prerequisiteEdge: SkillEdgeData = {
+  id: "edge-1",
+  treeId: "tree-1",
+  sourceNodeId: "node-1",
+  targetNodeId: "node-2",
+  type: "prerequisite",
+  style: null,
 };
 
 describe("mergeNodeUpdates", () => {
@@ -68,5 +91,21 @@ describe("findAvailableNodePosition", () => {
 
     expect(result.y).toBe(400);
     expect(result.x).not.toBe(400);
+  });
+});
+
+describe("applyNodeUpdateWithStatuses", () => {
+  it("applies a status change immediately and recomputes dependent nodes", () => {
+    const result = applyNodeUpdateWithStatuses(
+      [
+        { ...existingNode, status: "available", progress: 0 },
+        dependentNode,
+      ],
+      { ...existingNode, status: "completed", progress: 100 },
+      [prerequisiteEdge]
+    );
+
+    expect(result.find((node) => node.id === "node-1")?.status).toBe("completed");
+    expect(result.find((node) => node.id === "node-2")?.status).toBe("available");
   });
 });

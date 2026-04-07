@@ -1,4 +1,5 @@
-import type { SkillNodeData } from "@/types";
+import { computeNodeStatuses } from "@/lib/status-engine";
+import type { SkillEdgeData, SkillNodeData } from "@/types";
 
 type NodeUpdate = Partial<SkillNodeData> & Pick<SkillNodeData, "id">;
 type PlacementDirection = "above" | "below" | "parallel";
@@ -26,6 +27,23 @@ export function mergeNodeUpdates(
       positionY: update.positionY ?? node.positionY,
     };
   });
+}
+
+export function applyNodeUpdateWithStatuses(
+  existingNodes: SkillNodeData[],
+  updatedNode: SkillNodeData,
+  edges: SkillEdgeData[]
+) {
+  const nextNodes = existingNodes.map((node) => (
+    node.id === updatedNode.id ? updatedNode : node
+  ));
+
+  const statusMap = computeNodeStatuses(nextNodes, edges);
+
+  return nextNodes.map((node) => ({
+    ...node,
+    status: statusMap.get(node.id) ?? node.status,
+  }));
 }
 
 export function findAvailableNodePosition(

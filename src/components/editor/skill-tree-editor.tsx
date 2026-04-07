@@ -35,6 +35,7 @@ import { ContextMenu } from "./context-menu";
 import { computeNodeStatuses } from "@/lib/status-engine";
 import { useKeyboardShortcuts } from "@/lib/use-keyboard-shortcuts";
 import {
+  applyNodeUpdateWithStatuses,
   findAvailableNodePosition,
   mergeNodeUpdates,
 } from "@/lib/tree-editor-utils";
@@ -706,32 +707,36 @@ function EditorInner({
         body: JSON.stringify(updatedNode),
       });
 
-      treeDataRef.current.nodes = treeDataRef.current.nodes.map((node) =>
-        node.id === updatedNode.id ? updatedNode : node
+      const nextNodes = applyNodeUpdateWithStatuses(
+        treeDataRef.current.nodes,
+        updatedNode,
+        treeDataRef.current.edges
       );
+
+      treeDataRef.current.nodes = nextNodes;
+      const nodesById = new Map(nextNodes.map((node) => [node.id, node]));
+
       setNodes((currentNodes) =>
         currentNodes.map((node) =>
-          node.id === updatedNode.id
+          nodesById.has(node.id)
             ? {
                 ...node,
                 data: {
-                  title: updatedNode.title,
-                  status: updatedNode.status,
-                  difficulty: updatedNode.difficulty,
-                  progress: updatedNode.progress,
-                  description: updatedNode.description,
+                  title: nodesById.get(node.id)?.title,
+                  status: nodesById.get(node.id)?.status,
+                  difficulty: nodesById.get(node.id)?.difficulty,
+                  progress: nodesById.get(node.id)?.progress,
+                  description: nodesById.get(node.id)?.description,
                   selected: node.id === selectedNodeId,
                 },
               }
             : node
         )
       );
-      recomputeStatuses();
     },
     [
       buildRequestHeaders,
       effectiveCanEdit,
-      recomputeStatuses,
       selectedNodeId,
       setNodes,
       tree.id,
