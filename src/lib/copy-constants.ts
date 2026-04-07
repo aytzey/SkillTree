@@ -8,14 +8,14 @@ export const ROADMAP_STATUS_LABELS = {
 } as const satisfies Record<NodeStatus, string>;
 
 export const ROADMAP_SECTION_LABELS = {
-  landingTitle: "Project Roadmaps",
+  landingTitle: "Set a Goal. Build the Path.",
   dashboardTitle: "Your Roadmaps",
   dashboardEmptyTitle: "No roadmaps yet",
   creationTitle: "New Roadmap",
-  creationTitleField: "Roadmap Title",
-  creationTopicField: "Goal or Project",
-  creationContextField: "Current Context",
-  editorStepTitle: "Roadmap Step",
+  creationTitleField: "Goal",
+  creationTopicField: "Describe Your Goal",
+  creationContextField: "Context",
+  editorStepTitle: "Step",
   editorRequirements: "Requirements",
   editorResources: "Resources",
   editorDependencies: "Dependencies",
@@ -23,23 +23,23 @@ export const ROADMAP_SECTION_LABELS = {
 } as const;
 
 export const ROADMAP_MICROCOPY = {
-  landingSubtitle: "Turn a goal into a clear roadmap of project steps and requirements.",
-  dashboardSubtitle: "Plan milestones, project steps, and requirements in one place.",
-  dashboardEmptyBody: "Create a roadmap to map the steps required to reach your goal.",
-  creationSubtitle: "Choose how you want to build your roadmap.",
-  creationAiModeDescription: "Describe the goal and AI will draft the roadmap.",
-  creationBlankModeDescription: "Start with an empty roadmap and add each step yourself.",
-  editorEmptyTitle: "No roadmap step selected",
-  editorEmptyBody: "Select a step on the canvas to review requirements, resources, and progress.",
+  landingSubtitle: "Turn any goal into a clear roadmap of steps and requirements.",
+  dashboardSubtitle: "Your goals, broken down into clear steps and requirements.",
+  dashboardEmptyBody: "Pick a goal and build your first step-by-step roadmap.",
+  creationSubtitle: "Define your goal and we'll map the steps to get there.",
+  creationAiModeDescription: "Describe your goal, AI builds the roadmap.",
+  creationBlankModeDescription: "Start from scratch.",
+  editorEmptyTitle: "No step selected",
+  editorEmptyBody: "Click a step on the canvas to inspect it.",
 } as const;
 
 export const ROADMAP_PRIMARY_CTA_COPY = {
   landing: "Start Your Roadmap",
-  dashboard: "Create Roadmap",
+  dashboard: "New Roadmap",
   dashboardEmpty: "Create Your First Roadmap",
   creationAi: "Generate Roadmap",
   creationBlank: "Create Blank Roadmap",
-  editorEmpty: "Add Roadmap Step",
+  editorEmpty: "Create New Step",
 } as const;
 
 export const ROADMAP_COPY = {

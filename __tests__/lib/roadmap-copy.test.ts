@@ -25,14 +25,14 @@ describe("roadmap copy constants", () => {
 
   it("exports shared section labels, microcopy, and CTA copy for roadmap flows", () => {
     expect(ROADMAP_SECTION_LABELS).toEqual({
-      landingTitle: "Project Roadmaps",
+      landingTitle: "Set a Goal. Build the Path.",
       dashboardTitle: "Your Roadmaps",
       dashboardEmptyTitle: "No roadmaps yet",
       creationTitle: "New Roadmap",
-      creationTitleField: "Roadmap Title",
-      creationTopicField: "Goal or Project",
-      creationContextField: "Current Context",
-      editorStepTitle: "Roadmap Step",
+      creationTitleField: "Goal",
+      creationTopicField: "Describe Your Goal",
+      creationContextField: "Context",
+      editorStepTitle: "Step",
       editorRequirements: "Requirements",
       editorResources: "Resources",
       editorDependencies: "Dependencies",
@@ -40,30 +40,34 @@ describe("roadmap copy constants", () => {
     });
 
     expect(ROADMAP_MICROCOPY).toEqual({
-      landingSubtitle: "Turn a goal into a clear roadmap of project steps and requirements.",
-      dashboardSubtitle: "Plan milestones, project steps, and requirements in one place.",
-      dashboardEmptyBody: "Create a roadmap to map the steps required to reach your goal.",
-      creationSubtitle: "Choose how you want to build your roadmap.",
-      creationAiModeDescription: "Describe the goal and AI will draft the roadmap.",
-      creationBlankModeDescription: "Start with an empty roadmap and add each step yourself.",
-      editorEmptyTitle: "No roadmap step selected",
-      editorEmptyBody: "Select a step on the canvas to review requirements, resources, and progress.",
+      landingSubtitle: "Turn any goal into a clear roadmap of steps and requirements.",
+      dashboardSubtitle: "Your goals, broken down into clear steps and requirements.",
+      dashboardEmptyBody: "Pick a goal and build your first step-by-step roadmap.",
+      creationSubtitle: "Define your goal and we'll map the steps to get there.",
+      creationAiModeDescription: "Describe your goal, AI builds the roadmap.",
+      creationBlankModeDescription: "Start from scratch.",
+      editorEmptyTitle: "No step selected",
+      editorEmptyBody: "Click a step on the canvas to inspect it.",
     });
 
     expect(ROADMAP_PRIMARY_CTA_COPY).toEqual({
       landing: "Start Your Roadmap",
-      dashboard: "Create Roadmap",
+      dashboard: "New Roadmap",
       dashboardEmpty: "Create Your First Roadmap",
       creationAi: "Generate Roadmap",
       creationBlank: "Create Blank Roadmap",
-      editorEmpty: "Add Roadmap Step",
+      editorEmpty: "Create New Step",
     });
   });
 
   it("keeps the exported copy aligned to roadmap vocabulary", () => {
     const allCopy = collectStrings(ROADMAP_COPY).join(" ");
+    const sharedCopyGroups = [ROADMAP_SECTION_LABELS, ROADMAP_MICROCOPY, ROADMAP_PRIMARY_CTA_COPY];
 
-    expect(allCopy).toContain("Roadmap");
+    expect(sharedCopyGroups.flatMap((group) => collectStrings(group)).every((value) => value.trim().length > 0)).toBe(true);
+    expect(allCopy).toMatch(/roadmap/i);
+    expect(allCopy).toMatch(/goal/i);
+    expect(allCopy).toMatch(/step/i);
     expect(allCopy).not.toMatch(/skill tree|skill trees|journey|forge|forging/i);
     expect(ROADMAP_COPY.statuses).toBe(ROADMAP_STATUS_LABELS);
     expect(ROADMAP_COPY.sections).toBe(ROADMAP_SECTION_LABELS);
