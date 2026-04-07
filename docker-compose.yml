@@ -27,14 +27,29 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/skiltree
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-local-compose-secret}
-      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-https://skiltree.machinity.ai}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       PORT: 3000
       HOSTNAME: 0.0.0.0
+    expose:
+      - "3000"
     ports:
       - "3000:3000"
     networks:
       - skiltree_internal
+      - machinity_proxy_net
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=machinity_proxy_net
+      - traefik.http.routers.skiltree.rule=Host(`skiltree.machinity.ai`)
+      - traefik.http.routers.skiltree.entrypoints=websecure
+      - traefik.http.routers.skiltree.tls=true
+      - traefik.http.routers.skiltree.tls.certresolver=le
+      - traefik.http.services.skiltree.loadbalancer.server.port=3000
+      - traefik.http.routers.skiltree-http.rule=Host(`skiltree.machinity.ai`)
+      - traefik.http.routers.skiltree-http.entrypoints=web
+      - traefik.http.routers.skiltree-http.middlewares=skiltree-redirect
+      - traefik.http.middlewares.skiltree-redirect.redirectscheme.scheme=https
 
 volumes:
   skiltree_postgres_data:
@@ -43,3 +58,5 @@ networks:
   skiltree_internal:
     external: true
     name: skiltree_skiltree_internal
+  machinity_proxy_net:
+    external: true
