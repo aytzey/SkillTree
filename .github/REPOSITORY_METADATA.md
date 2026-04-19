@@ -1,12 +1,12 @@
 # Repository Metadata
 
-Recommended GitHub description:
+Applied GitHub description:
 
 ```text
-Local-first Rust desktop skill-tree planner with Obsidian-backed Markdown storage, installers, CI, and GitHub Release auto-updates.
+Local-first Rust desktop skill-tree planner with Obsidian-backed Markdown storage, cross-platform installers, CI, and auto-updates.
 ```
 
-Recommended topics:
+Applied topics:
 
 ```text
 rust
@@ -17,14 +17,16 @@ markdown
 local-first
 productivity
 skill-tree
+learning-tools
 auto-update
 cross-platform
+portfolio-project
 ```
 
-Recommended repository name:
+Repository name:
 
 ```text
-SkillTree Local
+SkillTree
 ```
 
-Keep the GitHub slug as `SkillTree` unless there is a strong reason to rename it. Existing links and auto-update configuration currently target `aytzey/SkillTree`.
+Keep the GitHub slug as `SkillTree` unless there is a strong reason to rename it. Existing links and auto-update configuration target `aytzey/SkillTree`.

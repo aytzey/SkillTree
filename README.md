@@ -1,21 +1,72 @@
 # SkillTree Local
 
 [![CI](https://github.com/aytzey/SkillTree/actions/workflows/ci.yml/badge.svg)](https://github.com/aytzey/SkillTree/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/aytzey/SkillTree?sort=semver)](https://github.com/aytzey/SkillTree/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/aytzey/SkillTree/total)](https://github.com/aytzey/SkillTree/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Rust](https://img.shields.io/badge/Rust-native%20desktop-orange)](crates/skilltree-local)
+[![Obsidian](https://img.shields.io/badge/Obsidian-compatible-7c3aed)](obsidian-plugin/skilltree-control)
 
 Local-first Rust desktop app for planning skills, learning paths, and project roadmaps as editable trees. SkillTree Local runs without a server, stores everything on disk, and can use an Obsidian vault as its native document database.
 
-This repository is intentionally no longer a web deployment target. The old Next.js code is kept as migration history; the product direction is a desktop app plus an optional Obsidian plugin.
+SkillTree Local is built for people who want roadmap software they can own: no hosted backend, no database server, no forced account, no deploy step. The app writes normal Markdown notes plus a small JSON graph manifest, so your learning plans stay readable in Obsidian, Git, and any editor.
 
-## Why This Project Stands Out
+If you like local-first developer tools, Rust desktop apps, or Obsidian-compatible workflows, this is the kind of project worth starring.
 
-- Rust desktop GUI built with `egui/eframe`, not a webview wrapper.
-- Obsidian-compatible storage: every tree and node is a Markdown note, with `_skilltree.json` preserving IDs, graph edges, layout, and metadata.
-- Works with or without Obsidian. The desktop app can use a normal app-data folder or a real vault folder.
-- Cross-platform setup scripts for Linux, macOS, and Windows.
-- Installer checks for Obsidian and attempts a platform-native install when it is missing.
-- Startup auto-update checks GitHub Releases in the background and replaces the local binary when a newer compatible release exists.
-- CI validates Rust, the Obsidian plugin bundle, installer paths, and doctor checks on Linux, macOS, and Windows.
-- Tagged releases publish platform-specific desktop binaries plus the Obsidian plugin bundle.
+## Highlights
+
+| Area | What is implemented |
+| --- | --- |
+| Desktop app | Native Rust GUI with `egui/eframe`, not Electron and not a webview wrapper. |
+| Storage | Markdown notes for people, `_skilltree.json` for stable graph state. |
+| Obsidian | Desktop plugin that reads the same vault files and launches the native app. |
+| Installer | Cross-platform setup for Linux, macOS, and Windows with Obsidian checks. |
+| Updates | Startup GitHub Release auto-update with platform-specific binary assets. |
+| CI/CD | Linux, macOS, Windows CI plus tagged release publishing. |
+| Quality | `cargo fmt`, `cargo clippy -D warnings`, Rust unit tests, plugin build, `npm audit`, setup doctor. |
+
+## Why It Is Different
+
+- You can use it without Obsidian, then later point it at an Obsidian vault.
+- You can open the same skill trees from the app, Obsidian, GitHub, or a plain Markdown editor.
+- You can move the vault between machines without export/import ceremony.
+- You can inspect the release pipeline end to end: native binaries, plugin zip, CI, and release assets.
+- You can treat the repo as a desktop product case study: migration from web prototype to local-first Rust app.
+
+## Download
+
+Latest release: [v0.1.0](https://github.com/aytzey/SkillTree/releases/latest)
+
+| Platform | Asset |
+| --- | --- |
+| Linux x86_64 | [`skilltree-local-v0.1.0-x86_64-unknown-linux-gnu.tar.gz`](https://github.com/aytzey/SkillTree/releases/latest/download/skilltree-local-v0.1.0-x86_64-unknown-linux-gnu.tar.gz) |
+| macOS Apple Silicon | [`skilltree-local-v0.1.0-aarch64-apple-darwin.tar.gz`](https://github.com/aytzey/SkillTree/releases/latest/download/skilltree-local-v0.1.0-aarch64-apple-darwin.tar.gz) |
+| macOS Intel | [`skilltree-local-v0.1.0-x86_64-apple-darwin.tar.gz`](https://github.com/aytzey/SkillTree/releases/latest/download/skilltree-local-v0.1.0-x86_64-apple-darwin.tar.gz) |
+| Windows x86_64 | [`skilltree-local-v0.1.0-x86_64-pc-windows-msvc.zip`](https://github.com/aytzey/SkillTree/releases/latest/download/skilltree-local-v0.1.0-x86_64-pc-windows-msvc.zip) |
+| Obsidian plugin | [`skilltree-control-v0.1.0.zip`](https://github.com/aytzey/SkillTree/releases/latest/download/skilltree-control-v0.1.0.zip) |
+
+Linux quick download:
+
+```bash
+curl -L https://github.com/aytzey/SkillTree/releases/latest/download/skilltree-local-v0.1.0-x86_64-unknown-linux-gnu.tar.gz | tar -xz
+chmod +x skilltree-local
+./skilltree-local
+```
+
+## Portfolio Notes
+
+This repository demonstrates:
+
+- desktop product architecture in Rust
+- local-first document modeling
+- Obsidian vault interoperability
+- cross-platform installation strategy
+- GitHub Release-based auto-update
+- CI/CD for multi-platform native binaries
+- migration discipline by archiving the old web app under `legacy-web/`
+
+Detailed engineering notes are in [`docs/PORTFOLIO.md`](docs/PORTFOLIO.md).
+Planned improvements are tracked in [`ROADMAP.md`](ROADMAP.md).
 
 ## Product Model
 
