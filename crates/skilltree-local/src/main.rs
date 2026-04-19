@@ -18,6 +18,22 @@ const DEFAULT_ROOT_FOLDER: &str = "SkillTree";
 const DEFAULT_OBSIDIAN_VAULT: &str = "/home/aytzey/Documents/Obsidian Vault";
 const GITHUB_OWNER: &str = "aytzey";
 const GITHUB_REPO: &str = "SkillTree";
+const SETTINGS_FILE: &str = "settings.json";
+const OPENROUTER_URL: &str = "https://openrouter.ai/api/v1/chat/completions";
+const DEFAULT_MODEL: &str = "anthropic/claude-sonnet-4.6";
+const MODEL_OPTIONS: &[&str] = &[
+    "anthropic/claude-sonnet-4.6",
+    "anthropic/claude-sonnet-4.5",
+    "anthropic/claude-opus-4.1",
+    "anthropic/claude-haiku-4.5",
+    "openai/gpt-5",
+    "openai/gpt-4o",
+    "openai/gpt-4o-mini",
+    "google/gemini-2.5-pro",
+    "google/gemini-2.0-flash-001",
+    "meta-llama/llama-3.3-70b-instruct",
+    "deepseek/deepseek-chat",
+];
 const NODE_COLUMN_WIDTH: f32 = 200.0;
 const NODE_ORB_CENTER_Y: f32 = 38.0;
 const NODE_INTERACT_HEIGHT: f32 = 128.0;
@@ -30,6 +46,7 @@ const BG4: egui::Color32 = egui::Color32::from_rgb(35, 45, 64);
 const FG1: egui::Color32 = egui::Color32::from_rgb(236, 227, 207);
 const FG2: egui::Color32 = egui::Color32::from_rgb(185, 178, 154);
 const FG3: egui::Color32 = egui::Color32::from_rgb(122, 117, 102);
+const FG4: egui::Color32 = egui::Color32::from_rgb(74, 71, 56);
 const BORDER1: egui::Color32 = egui::Color32::from_rgb(30, 39, 56);
 const BORDER2: egui::Color32 = egui::Color32::from_rgb(44, 54, 72);
 const BORDER3: egui::Color32 = egui::Color32::from_rgb(69, 80, 106);
@@ -54,6 +71,27 @@ fn main() -> eframe::Result {
         native_options,
         Box::new(|cc| Ok(Box::new(SkillTreeApp::new(cc)))),
     )
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct AppSettings {
+    #[serde(default)]
+    openrouter_api_key: String,
+    #[serde(default = "default_model")]
+    openrouter_model: String,
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            openrouter_api_key: String::new(),
+            openrouter_model: DEFAULT_MODEL.to_string(),
+        }
+    }
+}
+
+fn default_model() -> String {
+    DEFAULT_MODEL.to_string()
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -139,6 +177,8 @@ struct SkillNode {
     notes: Option<String>,
     #[serde(default)]
     sub_tree_id: Option<String>,
+    #[serde(default)]
+    tags: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -262,9 +302,23 @@ struct SkillTreeApp {
     new_resource_title: String,
     new_resource_url: String,
     tree_filter: String,
+    show_new_tree_input: bool,
+    show_edit_controls: bool,
+    inspector_tab: usize, // 0 = Details, 1 = Markdown
+    new_tag: String,
+    active_tag_filter: Option<String>,
     canvas_offset: egui::Vec2,
     canvas_zoom: f32,
     update_rx: Option<Receiver<String>>,
+    settings: AppSettings,
+    show_settings: bool,
+    settings_model_custom: String,
+    show_conjure: bool,
+    conjure_prompt: String,
+    conjure_running: bool,
+    conjure_error: Option<String>,
+    conjure_results: Vec<ConjureSuggestion>,
+    conjure_rx: Option<Receiver<Result<String, String>>>,
 }
 
 impl SkillTreeApp {
@@ -283,12 +337,445 @@ impl SkillTreeApp {
             new_resource_title: String::new(),
             new_resource_url: String::new(),
             tree_filter: String::new(),
+            show_new_tree_input: false,
+            show_edit_controls: false,
+            inspector_tab: 0,
+            new_tag: String::new(),
+            active_tag_filter: None,
             canvas_offset: egui::vec2(140.0, 80.0),
             canvas_zoom: 0.9,
             update_rx: start_update_check(),
+            settings: load_settings(),
+            show_settings: false,
+            settings_model_custom: String::new(),
+            show_conjure: false,
+            conjure_prompt: String::new(),
+            conjure_running: false,
+            conjure_error: None,
+            conjure_results: Vec::new(),
+            conjure_rx: None,
         };
         app.reload();
         app
+    }
+
+    fn poll_conjure(&mut self) {
+        let Some(rx) = &self.conjure_rx else {
+            return;
+        };
+        match rx.try_recv() {
+            Ok(Ok(raw)) => {
+                self.conjure_running = false;
+                self.conjure_rx = None;
+                match parse_conjure_json(&raw) {
+                    Ok(list) if !list.is_empty() => {
+                        self.conjure_results = list;
+                        self.conjure_error = None;
+                        self.status_line = format!("Conjured {} ideas", self.conjure_results.len());
+                    }
+                    Ok(_) => {
+                        self.conjure_error = Some("Model returned no suggestions.".into());
+                    }
+                    Err(err) => {
+                        self.conjure_error = Some(format!(
+                            "Could not parse model output as JSON: {err}. Raw start: {}",
+                            raw.chars().take(160).collect::<String>()
+                        ));
+                    }
+                }
+            }
+            Ok(Err(err)) => {
+                self.conjure_running = false;
+                self.conjure_rx = None;
+                self.conjure_error = Some(err);
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => {}
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                self.conjure_running = false;
+                self.conjure_rx = None;
+            }
+        }
+    }
+
+    fn open_conjure(&mut self) {
+        self.show_conjure = true;
+        self.conjure_error = None;
+        if self.conjure_prompt.trim().is_empty() {
+            if let Some(node) = self.selected_node_ref() {
+                self.conjure_prompt = format!(
+                    "Suggest 5 child skills that deepen \"{}\". Cover prerequisites and logical next steps.",
+                    node.title
+                );
+            }
+        }
+    }
+
+    fn selected_node_ref(&self) -> Option<&SkillNode> {
+        let tree = self.selected_tree_ref()?;
+        let id = self.selected_node_id.as_deref()?;
+        tree.nodes.iter().find(|n| n.id == id)
+    }
+
+    fn start_conjure_request(&mut self) {
+        if self.conjure_running {
+            return;
+        }
+        let api_key = self.settings.openrouter_api_key.clone();
+        let model = self.settings.openrouter_model.clone();
+        let Some(node) = self.selected_node_ref().cloned() else {
+            self.conjure_error = Some("Select a node first.".into());
+            return;
+        };
+        let user_ask = if self.conjure_prompt.trim().is_empty() {
+            format!("Suggest 5 child skills that deepen \"{}\".", node.title)
+        } else {
+            self.conjure_prompt.clone()
+        };
+        let system = CONJURE_SYSTEM_PROMPT;
+        let user = build_conjure_user_prompt(
+            &node.title,
+            node.description.as_deref().unwrap_or(""),
+            &user_ask,
+        );
+
+        let (tx, rx) = mpsc::channel();
+        self.conjure_rx = Some(rx);
+        self.conjure_running = true;
+        self.conjure_error = None;
+        self.conjure_results.clear();
+        thread::spawn(move || {
+            let result = openrouter_complete(&api_key, &model, system, &user)
+                .map_err(|e| format!("{e:#}"));
+            let _ = tx.send(result);
+        });
+    }
+
+    fn apply_conjure_suggestions(&mut self) {
+        let Some(tree_index) = self.selected_tree else { return };
+        let Some(parent_id) = self.selected_node_id.clone() else { return };
+        let parent_pos = match self.trees[tree_index].nodes.iter().find(|n| n.id == parent_id) {
+            Some(n) => (n.position_x, n.position_y),
+            None => (200.0, 200.0),
+        };
+        let tree_id = self.trees[tree_index].id.clone();
+        let mut added = 0usize;
+        let results = std::mem::take(&mut self.conjure_results);
+        let count = results.len() as f32;
+        for (i, s) in results.into_iter().enumerate() {
+            let id = format!("ai-{}", stable_hash(&format!("{}-{}", parent_id, s.title)));
+            if self.trees[tree_index].nodes.iter().any(|n| n.id == id) {
+                continue;
+            }
+            let x = parent_pos.0 + (i as f32 - (count - 1.0) * 0.5) * 220.0;
+            let y = parent_pos.1 + 180.0;
+            let node = SkillNode {
+                tree_id: tree_id.clone(),
+                id: id.clone(),
+                parent_id: Some(parent_id.clone()),
+                title: s.title,
+                description: Some(s.description),
+                difficulty: s.difficulty.clamp(1, 5),
+                estimated_hours: s.estimated_hours,
+                progress: 0,
+                status: NodeStatus::Available,
+                position_x: x,
+                position_y: y,
+                style: None,
+                sub_tasks: Vec::new(),
+                resources: Vec::new(),
+                notes: None,
+                sub_tree_id: None,
+                tags: vec!["conjured".into()],
+            };
+            self.trees[tree_index].nodes.push(node);
+            self.trees[tree_index].edges.push(SkillEdge {
+                tree_id: tree_id.clone(),
+                id: edge_id(&parent_id, &id, &EdgeType::Prerequisite),
+                source_node_id: parent_id.clone(),
+                target_node_id: id,
+                r#type: EdgeType::Prerequisite,
+                style: None,
+            });
+            added += 1;
+        }
+        if added > 0 {
+            self.status_line = format!("Applied {} conjured nodes", added);
+            self.show_conjure = false;
+            self.conjure_prompt.clear();
+        }
+    }
+
+    fn render_settings_overlay(&mut self, ctx: &egui::Context) {
+        let mut open = true;
+        let mut save_and_close = false;
+        egui::Window::new("Settings")
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .default_width(460.0)
+            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+            .show(ctx, |ui| {
+                ui.add_space(6.0);
+                ui.label(
+                    egui::RichText::new("OPENROUTER")
+                        .monospace()
+                        .color(FG3)
+                        .size(11.0),
+                );
+                ui.add_space(6.0);
+
+                ui.label(egui::RichText::new("API key").color(FG2).size(12.0));
+                ui.add_space(2.0);
+                ui.add_sized(
+                    [ui.available_width(), 26.0],
+                    egui::TextEdit::singleline(&mut self.settings.openrouter_api_key)
+                        .password(true)
+                        .hint_text("sk-or-v1-..."),
+                );
+                ui.add_space(4.0);
+                ui.label(
+                    egui::RichText::new("Get a key at https://openrouter.ai/keys")
+                        .color(FG3)
+                        .size(11.0),
+                );
+
+                ui.add_space(14.0);
+                ui.label(egui::RichText::new("Model").color(FG2).size(12.0));
+                ui.add_space(2.0);
+                egui::ComboBox::from_id_salt("or-model-combo")
+                    .width(ui.available_width())
+                    .selected_text(self.settings.openrouter_model.clone())
+                    .show_ui(ui, |ui| {
+                        for model in MODEL_OPTIONS {
+                            ui.selectable_value(
+                                &mut self.settings.openrouter_model,
+                                (*model).to_string(),
+                                *model,
+                            );
+                        }
+                    });
+                ui.add_space(6.0);
+                ui.label(
+                    egui::RichText::new("Custom model slug (optional)")
+                        .color(FG3)
+                        .size(11.0),
+                );
+                ui.horizontal(|ui| {
+                    let r = ui.add_sized(
+                        [ui.available_width() - 76.0, 24.0],
+                        egui::TextEdit::singleline(&mut self.settings_model_custom)
+                            .hint_text("vendor/model-id"),
+                    );
+                    if ui.add(toolbar_button("Use")).clicked()
+                        || (r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)))
+                    {
+                        let v = self.settings_model_custom.trim().to_string();
+                        if !v.is_empty() {
+                            self.settings.openrouter_model = v;
+                            self.settings_model_custom.clear();
+                        }
+                    }
+                });
+
+                ui.add_space(16.0);
+                ui.horizontal(|ui| {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.add(primary_toolbar_button("Save")).clicked() {
+                            save_and_close = true;
+                        }
+                        if ui.add(toolbar_button("Cancel")).clicked() {
+                            save_and_close = false;
+                            // Fall through; we'll re-load on cancel below.
+                            self.settings = load_settings();
+                            self.show_settings = false;
+                        }
+                    });
+                });
+                ui.add_space(4.0);
+            });
+        if save_and_close {
+            if let Err(err) = save_settings(&self.settings) {
+                self.status_line = format!("Settings save failed: {err:#}");
+            } else {
+                self.status_line = "Settings saved".into();
+                self.show_settings = false;
+            }
+        }
+        if !open {
+            self.show_settings = false;
+        }
+    }
+
+    fn render_conjure_overlay(&mut self, ctx: &egui::Context) {
+        let mut open = true;
+        let node_title = self
+            .selected_node_ref()
+            .map(|n| n.title.clone())
+            .unwrap_or_else(|| "—".into());
+        let mut generate = false;
+        let mut apply_now = false;
+        egui::Window::new("Conjure")
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(true)
+            .default_width(520.0)
+            .default_height(440.0)
+            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+            .show(ctx, |ui| {
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    ui.label(
+                        egui::RichText::new("PARENT SKILL")
+                            .monospace()
+                            .color(FG3)
+                            .size(11.0),
+                    );
+                    ui.label(
+                        egui::RichText::new(&node_title)
+                            .color(FG1)
+                            .size(13.0)
+                            .strong(),
+                    );
+                });
+
+                ui.add_space(10.0);
+                ui.label(
+                    egui::RichText::new("PROMPT")
+                        .monospace()
+                        .color(FG3)
+                        .size(11.0),
+                );
+                ui.add_sized(
+                    [ui.available_width(), 80.0],
+                    egui::TextEdit::multiline(&mut self.conjure_prompt)
+                        .desired_rows(3)
+                        .hint_text("Describe what to conjure…"),
+                );
+
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    ui.label(
+                        egui::RichText::new(format!("Model: {}", self.settings.openrouter_model))
+                            .color(FG3)
+                            .size(11.0)
+                            .monospace(),
+                    );
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if self.conjure_running {
+                            ui.add_enabled(false, toolbar_button("Generating…"));
+                        } else if ui.add(primary_toolbar_button("Generate")).clicked() {
+                            generate = true;
+                        }
+                    });
+                });
+
+                if let Some(err) = &self.conjure_error {
+                    ui.add_space(6.0);
+                    let (rect, _) = ui.allocate_exact_size(
+                        egui::vec2(ui.available_width(), 0.0),
+                        egui::Sense::hover(),
+                    );
+                    let _ = rect;
+                    ui.colored_label(
+                        egui::Color32::from_rgb(200, 107, 92),
+                        format!("⚠  {err}"),
+                    );
+                }
+
+                ui.add_space(10.0);
+                ui.separator();
+                ui.add_space(6.0);
+
+                if self.conjure_results.is_empty() {
+                    ui.label(
+                        egui::RichText::new(
+                            "Suggestions will appear here after you hit Generate.",
+                        )
+                        .color(FG3)
+                        .size(12.0),
+                    );
+                } else {
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "{} suggestion(s) — edit will be wired as prerequisites of the parent.",
+                            self.conjure_results.len()
+                        ))
+                        .color(FG2)
+                        .size(12.0),
+                    );
+                    ui.add_space(6.0);
+                    egui::ScrollArea::vertical()
+                        .max_height(200.0)
+                        .show(ui, |ui| {
+                            for s in &self.conjure_results {
+                                let frame = egui::Frame::new()
+                                    .fill(BG1)
+                                    .stroke(egui::Stroke::new(1.0, BORDER1))
+                                    .corner_radius(2.0)
+                                    .inner_margin(egui::Margin::symmetric(10, 8));
+                                frame.show(ui, |ui| {
+                                    ui.horizontal(|ui| {
+                                        ui.label(
+                                            egui::RichText::new(&s.title)
+                                                .color(FG1)
+                                                .size(13.0)
+                                                .strong(),
+                                        );
+                                        ui.with_layout(
+                                            egui::Layout::right_to_left(egui::Align::Center),
+                                            |ui| {
+                                                let hours = s
+                                                    .estimated_hours
+                                                    .map(|h| format!("{h:.0}h"))
+                                                    .unwrap_or_else(|| "—".into());
+                                                ui.label(
+                                                    egui::RichText::new(format!(
+                                                        "Diff {}/5 · {}",
+                                                        s.difficulty.clamp(1, 5),
+                                                        hours
+                                                    ))
+                                                    .monospace()
+                                                    .color(FG3)
+                                                    .size(11.0),
+                                                );
+                                            },
+                                        );
+                                    });
+                                    if !s.description.is_empty() {
+                                        ui.add_space(2.0);
+                                        ui.label(
+                                            egui::RichText::new(&s.description)
+                                                .color(FG2)
+                                                .size(12.0),
+                                        );
+                                    }
+                                });
+                                ui.add_space(6.0);
+                            }
+                        });
+                    ui.add_space(6.0);
+                    ui.horizontal(|ui| {
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.add(primary_toolbar_button("Add all to canvas")).clicked() {
+                                apply_now = true;
+                            }
+                            if ui.add(toolbar_button("Discard")).clicked() {
+                                self.conjure_results.clear();
+                            }
+                        });
+                    });
+                }
+                ui.add_space(4.0);
+            });
+        if generate {
+            self.start_conjure_request();
+        }
+        if apply_now {
+            self.apply_conjure_suggestions();
+        }
+        if !open {
+            self.show_conjure = false;
+        }
     }
 
     fn poll_update_status(&mut self) {
@@ -306,10 +793,25 @@ impl SkillTreeApp {
             Ok(trees) => {
                 self.trees = trees;
                 if self.trees.is_empty() {
-                    self.selected_tree = None;
-                    self.selected_node_id = None;
+                    // Empty storage → show a rich demo tree in memory so the
+                    // canvas is not barren on first launch. Not persisted.
+                    self.trees = demo_trees();
+                    self.selected_tree = Some(0);
+                    // Prefer an in-progress node so the inspector shows a
+                    // rich state (progress bar + partial subtasks).
+                    self.selected_node_id = self.trees[0]
+                        .nodes
+                        .iter()
+                        .find(|n| n.status == NodeStatus::InProgress)
+                        .or_else(|| self.trees[0].nodes.first())
+                        .map(|n| n.id.clone());
                 } else {
-                    let next_index = self.selected_tree.unwrap_or(0).min(self.trees.len() - 1);
+                    let fallback = self.selected_tree.unwrap_or(0).min(self.trees.len() - 1);
+                    let next_index = self
+                        .trees
+                        .iter()
+                        .position(|t| !t.nodes.is_empty())
+                        .unwrap_or(fallback);
                     self.selected_tree = Some(next_index);
                     if self.selected_node_id.is_none() {
                         self.selected_node_id = self.trees[next_index]
@@ -427,6 +929,7 @@ impl SkillTreeApp {
             resources: Vec::new(),
             notes: None,
             sub_tree_id: None,
+            tags: Vec::new(),
         };
 
         if let Some(source_node_id) = parent_id {
@@ -487,6 +990,7 @@ impl SkillTreeApp {
 impl eframe::App for SkillTreeApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.poll_update_status();
+        self.poll_conjure();
 
         if ctx.input_mut(|input| input.consume_key(egui::Modifiers::COMMAND, egui::Key::S)) {
             self.save_selected_tree();
@@ -494,32 +998,123 @@ impl eframe::App for SkillTreeApp {
         if ctx.input_mut(|input| input.consume_key(egui::Modifiers::COMMAND, egui::Key::R)) {
             self.reload();
         }
+        if ctx.input_mut(|input| input.consume_key(egui::Modifiers::COMMAND, egui::Key::J)) {
+            if self.selected_node_id.is_some() {
+                self.open_conjure();
+            }
+        }
+        if (self.show_settings || self.show_conjure)
+            && ctx.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
+        {
+            if self.show_settings {
+                // Esc on settings = cancel (drop in-flight edits)
+                self.settings = load_settings();
+                self.show_settings = false;
+            }
+            if self.show_conjure {
+                self.show_conjure = false;
+            }
+        }
 
-        egui::TopBottomPanel::top("top_bar")
-            .exact_height(42.0)
+        if let Some(tree) = self.selected_tree_ref() {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Title(format!(
+                "{} \u{2014} SkillTree",
+                tree.title
+            )));
+        }
+
+        egui::TopBottomPanel::top("os_title_bar")
+            .exact_height(30.0)
+            .frame(egui::Frame::new().fill(BG0))
+            .show_separator_line(false)
+            .show(ctx, |ui| self.render_os_title_bar(ui));
+
+        egui::TopBottomPanel::top("actions_bar")
+            .exact_height(38.0)
+            .frame(egui::Frame::new().fill(BG0))
+            .show_separator_line(false)
             .show(ctx, |ui| self.render_top_bar(ui));
 
         egui::TopBottomPanel::bottom("status_bar")
-            .exact_height(26.0)
+            .exact_height(24.0)
+            .frame(egui::Frame::new().fill(BG0))
+            .show_separator_line(false)
             .show(ctx, |ui| self.render_status_bar(ui));
 
         egui::SidePanel::left("tree_sidebar")
             .resizable(false)
-            .exact_width(260.0)
+            .exact_width(240.0)
+            .frame(egui::Frame::new().fill(BG2))
+            .show_separator_line(false)
             .show(ctx, |ui| self.render_tree_rail(ui));
 
         egui::SidePanel::right("inspector")
             .resizable(false)
             .exact_width(380.0)
+            .frame(egui::Frame::new().fill(BG2))
+            .show_separator_line(false)
             .show(ctx, |ui| self.render_inspector(ui));
 
         egui::CentralPanel::default().show(ctx, |ui| {
             self.render_canvas(ui);
         });
+
+        if self.show_settings {
+            self.render_settings_overlay(ctx);
+        }
+        if self.show_conjure {
+            self.render_conjure_overlay(ctx);
+        } else if self.conjure_rx.is_some() {
+            // Dialog was closed mid-flight — cut the worker loose so the
+            // next Generate starts cleanly.
+            self.conjure_rx = None;
+            self.conjure_running = false;
+        }
     }
 }
 
 impl SkillTreeApp {
+    fn render_os_title_bar(&mut self, ui: &mut egui::Ui) {
+        let rect = ui.max_rect();
+        let painter = ui.painter();
+        painter.rect_filled(rect, 0.0, BG0);
+        painter.line_segment(
+            [rect.left_bottom(), rect.right_bottom()],
+            egui::Stroke::new(1.0, BORDER1),
+        );
+
+        // macOS traffic-light dots
+        let dots = [
+            egui::Color32::from_rgb(237, 106, 94),
+            egui::Color32::from_rgb(224, 195, 79),
+            egui::Color32::from_rgb(108, 193, 93),
+        ];
+        let dot_radius = 5.5;
+        for (i, color) in dots.iter().enumerate() {
+            let cx = rect.left() + 14.0 + i as f32 * 18.0;
+            let cy = rect.center().y;
+            painter.circle_filled(egui::pos2(cx, cy), dot_radius, *color);
+            painter.circle_stroke(
+                egui::pos2(cx, cy),
+                dot_radius,
+                egui::Stroke::new(0.5, egui::Color32::from_rgba_unmultiplied(0, 0, 0, 65)),
+            );
+        }
+
+        // Centered title
+        let tree_title = self
+            .selected_tree_ref()
+            .map(|t| t.title.clone())
+            .unwrap_or_else(|| "Untitled".to_string());
+        painter.text(
+            egui::pos2(rect.center().x, rect.center().y),
+            egui::Align2::CENTER_CENTER,
+            format!("{} \u{2014} SkillTree", tree_title),
+            egui::FontId::monospace(11.0),
+            FG3,
+        );
+    }
+
     fn render_top_bar(&mut self, ui: &mut egui::Ui) {
         let rect = ui.max_rect();
         ui.painter().rect_filled(rect, 0.0, BG0);
@@ -528,59 +1123,185 @@ impl SkillTreeApp {
             egui::Stroke::new(1.0, BORDER1),
         );
 
-        ui.add_space(4.0);
+        ui.add_space(2.0);
         ui.horizontal_centered(|ui| {
-            ui.add_space(4.0);
+            ui.add_space(8.0);
+
+            // App branding — Cinzel serif matches handoff display font
+            ui.label(
+                egui::RichText::new("\u{25B2}")
+                    .color(ACCENT)
+                    .size(13.0),
+            );
+            ui.add_space(2.0);
             ui.label(
                 egui::RichText::new("SkillTree")
+                    .family(egui::FontFamily::Name("display".into()))
                     .strong()
                     .color(FG1)
                     .size(14.0),
             );
-            ui.label(
-                egui::RichText::new("LOCAL")
-                    .monospace()
-                    .color(ACCENT_2)
-                    .size(10.0),
+
+            // LOCAL badge (custom painted pill)
+            ui.add_space(4.0);
+            let (badge_rect, _) =
+                ui.allocate_exact_size(egui::vec2(42.0, 16.0), egui::Sense::hover());
+            ui.painter().rect_filled(badge_rect, 2.0, BG2);
+            ui.painter().rect_stroke(
+                badge_rect,
+                2.0,
+                egui::Stroke::new(1.0, BORDER1),
+                egui::StrokeKind::Middle,
             );
-            ui.separator();
-            ui.label(
-                egui::RichText::new("Storage")
-                    .monospace()
-                    .color(FG3)
-                    .size(11.0),
-            );
-            ui.label(
-                egui::RichText::new(short_path(&self.storage_root, 62))
-                    .monospace()
-                    .color(FG2)
-                    .size(11.0),
+            ui.painter().text(
+                badge_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                "LOCAL",
+                egui::FontId::monospace(10.0),
+                FG3,
             );
 
-            if ui.add(toolbar_button("Choose folder")).clicked() {
+            ui.add_space(4.0);
+            vertical_divider(ui);
+            ui.add_space(4.0);
+
+            // Folder path (chip-styled button)
+            let path_text = if let Some(tree) = self.selected_tree_ref() {
+                short_path(&tree.folder, 32)
+            } else {
+                short_path(&self.storage_root, 32)
+            };
+            let folder_label = format!("\u{1F4C1}  {}", path_text);
+            if ui.add(chip_button(&folder_label)).clicked() {
                 self.choose_storage_root();
             }
-            if ui.add(toolbar_button("Use Obsidian Vault")).clicked() {
-                self.use_obsidian_vault();
-            }
-            if ui.add(toolbar_button("Reload")).clicked() {
-                self.reload();
-            }
-            if ui.add(primary_toolbar_button("Save")).clicked() {
-                self.save_selected_tree();
-            }
 
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let selected = self
-                    .selected_tree_ref()
-                    .map(|tree| tree.title.as_str())
-                    .unwrap_or("No tree");
+            // Tag filter pills
+            let unique_tags: Vec<String> = self
+                .selected_tree_ref()
+                .map(|tree| {
+                    let mut set: Vec<String> = Vec::new();
+                    for n in &tree.nodes {
+                        for t in &n.tags {
+                            if !set.contains(t) {
+                                set.push(t.clone());
+                            }
+                        }
+                    }
+                    set.sort();
+                    set
+                })
+                .unwrap_or_default();
+
+            if !unique_tags.is_empty() {
+                ui.add_space(4.0);
                 ui.label(
-                    egui::RichText::new(selected)
+                    egui::RichText::new("#")
                         .monospace()
                         .color(FG3)
                         .size(11.0),
                 );
+                let mut clicked: Option<String> = None;
+                for tag in unique_tags.iter().take(4) {
+                    let is_active = self.active_tag_filter.as_ref() == Some(tag);
+                    if tag_pill(ui, tag, is_active).clicked() {
+                        clicked = Some(tag.clone());
+                    }
+                }
+                if let Some(tag) = clicked {
+                    self.active_tag_filter = if self.active_tag_filter.as_ref() == Some(&tag) {
+                        None
+                    } else {
+                        Some(tag)
+                    };
+                }
+            }
+
+            // Right-aligned actions — lean set matching handoff hero
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.add_space(6.0);
+
+                // Inspector toggle (rightmost)
+                let _ = ui.add(icon_chip("\u{25A3}", true))
+                    .on_hover_text("Toggle inspector");
+
+                // Settings (gear)
+                if ui
+                    .add(icon_chip("\u{2699}", false))
+                    .on_hover_text("OpenRouter settings")
+                    .clicked()
+                {
+                    self.settings_model_custom.clear();
+                    self.show_settings = true;
+                }
+
+                // Link vault / vault name
+                if ui.add(chip_button("\u{2726}  Link vault")).clicked() {
+                    self.use_obsidian_vault();
+                }
+
+                // Conjure primary (opens AI dialog for selected node)
+                let enabled = self.selected_node_id.is_some();
+                let (fg, bg, stroke) = if enabled {
+                    (
+                        ACCENT_2,
+                        egui::Color32::from_rgba_unmultiplied(217, 178, 76, 24),
+                        ACCENT,
+                    )
+                } else {
+                    (FG3, BG2, BORDER2)
+                };
+                let conjure = egui::Button::new(
+                    egui::RichText::new("\u{2728}  Conjure  \u{2318}J")
+                        .color(fg)
+                        .size(11.0),
+                )
+                .fill(bg)
+                .stroke(egui::Stroke::new(1.0, stroke))
+                .corner_radius(2.0)
+                .min_size(egui::vec2(0.0, 24.0));
+                let resp = ui.add_enabled(enabled, conjure);
+                if !enabled {
+                    resp.clone().on_hover_text("Select a node first");
+                }
+                if resp.clicked() && enabled {
+                    self.open_conjure();
+                }
+
+                // History icon (reload)
+                if ui.add(icon_chip("\u{21BB}", false))
+                    .on_hover_text("Reload (Ctrl+R)").clicked()
+                {
+                    self.reload();
+                }
+
+                // Quick find chip
+                let (qf_rect, qf_resp) =
+                    ui.allocate_exact_size(egui::vec2(150.0, 24.0), egui::Sense::click());
+                ui.painter().rect_filled(qf_rect, 2.0, BG2);
+                ui.painter().rect_stroke(
+                    qf_rect,
+                    2.0,
+                    egui::Stroke::new(1.0, BORDER2),
+                    egui::StrokeKind::Middle,
+                );
+                ui.painter().text(
+                    egui::pos2(qf_rect.left() + 10.0, qf_rect.center().y),
+                    egui::Align2::LEFT_CENTER,
+                    "\u{1F50D}  Quick find",
+                    egui::FontId::proportional(11.0),
+                    FG3,
+                );
+                ui.painter().text(
+                    egui::pos2(qf_rect.right() - 10.0, qf_rect.center().y),
+                    egui::Align2::RIGHT_CENTER,
+                    "\u{2318}K",
+                    egui::FontId::monospace(10.0),
+                    FG3,
+                );
+                if qf_resp.hovered() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                }
             });
         });
     }
@@ -593,54 +1314,89 @@ impl SkillTreeApp {
             egui::Stroke::new(1.0, BORDER1),
         );
 
-        let total_nodes = self
-            .trees
-            .iter()
-            .map(|tree| tree.nodes.len())
-            .sum::<usize>();
+        let total_nodes: usize = self.trees.iter().map(|t| t.nodes.len()).sum();
         let total_done = self
             .trees
             .iter()
-            .flat_map(|tree| tree.nodes.iter())
-            .filter(|node| node.status == NodeStatus::Completed)
+            .flat_map(|t| t.nodes.iter())
+            .filter(|n| n.status == NodeStatus::Completed)
             .count();
-        let selected_id = self.selected_node_id.as_deref().unwrap_or("-");
-        let mode = if self.storage_root.starts_with(DEFAULT_OBSIDIAN_VAULT) {
-            "Obsidian vault"
-        } else {
-            "Local files"
-        };
+        let is_vault = self.storage_root.starts_with(DEFAULT_OBSIDIAN_VAULT);
+        let mode = if is_vault { "Obsidian vault" } else { "Local" };
+        let path_text = self
+            .selected_tree_ref()
+            .map(|t| short_path(&t.folder, 40))
+            .unwrap_or_else(|| short_path(&self.storage_root, 40));
+        let selected_id = self.selected_node_id.clone();
+        let trees_len = self.trees.len();
+        let status_line = self.status_line.clone();
 
-        ui.add_space(3.0);
-        ui.horizontal(|ui| {
-            ui.colored_label(ACCENT, "*");
-            ui.label(egui::RichText::new(mode).monospace().color(FG2).size(11.0));
-            ui.separator();
-            ui.label(
-                egui::RichText::new(format!(
-                    "{} trees / {} nodes / {} forged",
-                    self.trees.len(),
-                    total_nodes,
-                    total_done
-                ))
-                .monospace()
-                .color(FG3)
-                .size(11.0),
+        ui.horizontal_centered(|ui| {
+            ui.add_space(10.0);
+            // Status dot + mode
+            let (dot_rect, _) = ui.allocate_exact_size(egui::vec2(10.0, 12.0), egui::Sense::hover());
+            ui.painter().circle_filled(
+                dot_rect.center(),
+                3.0,
+                if is_vault { ACCENT } else { STATUS_DONE },
             );
-            ui.separator();
+            ui.label(egui::RichText::new(mode).monospace().color(FG2).size(11.0));
+
+            ui.add_space(6.0);
+            vertical_divider(ui);
+            ui.add_space(6.0);
+
             ui.label(
-                egui::RichText::new(format!("selected {selected_id}"))
+                egui::RichText::new(path_text)
                     .monospace()
                     .color(FG3)
                     .size(11.0),
             );
+
+            ui.add_space(6.0);
+            vertical_divider(ui);
+            ui.add_space(6.0);
+
+            ui.label(
+                egui::RichText::new(format!("{} trees", trees_len))
+                    .monospace()
+                    .color(FG3)
+                    .size(11.0),
+            );
+            ui.label(egui::RichText::new("\u{00B7}").color(FG4).size(11.0));
+            ui.label(
+                egui::RichText::new(format!("{} nodes", total_nodes))
+                    .monospace()
+                    .color(FG2)
+                    .size(11.0),
+            );
+            ui.label(egui::RichText::new("\u{00B7}").color(FG4).size(11.0));
+            ui.label(
+                egui::RichText::new(format!("{} done", total_done))
+                    .monospace()
+                    .color(STATUS_DONE)
+                    .size(11.0),
+            );
+
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.add_space(10.0);
                 ui.label(
-                    egui::RichText::new(&self.status_line)
+                    egui::RichText::new(&status_line)
                         .monospace()
                         .color(FG3)
                         .size(11.0),
                 );
+                if let Some(node_id) = selected_id {
+                    ui.add_space(6.0);
+                    vertical_divider(ui);
+                    ui.add_space(6.0);
+                    ui.label(
+                        egui::RichText::new(node_id)
+                            .monospace()
+                            .color(FG3)
+                            .size(11.0),
+                    );
+                }
             });
         });
     }
@@ -653,9 +1409,15 @@ impl SkillTreeApp {
             egui::Stroke::new(1.0, BORDER1),
         );
 
-        ui.add_space(8.0);
+        // Header row (36px) with bottom border separator
+        let header_rect = egui::Rect::from_min_size(rect.left_top(), egui::vec2(rect.width(), 36.0));
+        ui.painter().line_segment(
+            [header_rect.left_bottom(), header_rect.right_bottom()],
+            egui::Stroke::new(1.0, BORDER1),
+        );
         ui.horizontal(|ui| {
-            ui.add_space(8.0);
+            ui.set_min_height(36.0);
+            ui.add_space(12.0);
             ui.label(
                 egui::RichText::new("TREES")
                     .monospace()
@@ -663,49 +1425,80 @@ impl SkillTreeApp {
                     .size(11.0),
             );
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.add(toolbar_button("New")).clicked() {
-                    self.create_tree();
+                ui.add_space(8.0);
+                // New tree (+)
+                if ui
+                    .add(icon_chip("+", false))
+                    .on_hover_text("New tree")
+                    .clicked()
+                {
+                    self.show_new_tree_input = !self.show_new_tree_input;
                 }
             });
         });
 
-        ui.horizontal(|ui| {
-            ui.add_space(8.0);
-            ui.add_sized(
-                [(ui.available_width() - 8.0).max(80.0), 24.0],
-                egui::TextEdit::singleline(&mut self.new_tree_title).hint_text("New tree title"),
-            );
-        });
+        // Conditional new-tree input
+        if self.show_new_tree_input {
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                ui.add_space(10.0);
+                let r = ui.add_sized(
+                    [(ui.available_width() - 62.0).max(60.0), 24.0],
+                    egui::TextEdit::singleline(&mut self.new_tree_title)
+                        .hint_text("Tree title..."),
+                );
+                if ui.add(toolbar_button("Create")).clicked()
+                    || (r.lost_focus()
+                        && ui.input(|i| i.key_pressed(egui::Key::Enter))
+                        && !self.new_tree_title.trim().is_empty())
+                {
+                    self.create_tree();
+                    self.show_new_tree_input = false;
+                }
+                ui.add_space(10.0);
+            });
+        }
 
+        // Search input with bottom border
         ui.add_space(8.0);
         ui.horizontal(|ui| {
-            ui.add_space(8.0);
-            ui.add_sized(
-                [(ui.available_width() - 8.0).max(80.0), 24.0],
-                egui::TextEdit::singleline(&mut self.tree_filter).hint_text("Filter nodes"),
+            ui.add_space(10.0);
+            let filter_rect_width = (ui.available_width() - 20.0).max(80.0);
+            let (filter_rect, _) =
+                ui.allocate_exact_size(egui::vec2(filter_rect_width, 26.0), egui::Sense::hover());
+            ui.painter().rect_filled(filter_rect, 2.0, BG1);
+            ui.painter().rect_stroke(
+                filter_rect,
+                2.0,
+                egui::Stroke::new(1.0, BORDER2),
+                egui::StrokeKind::Middle,
+            );
+            ui.painter().text(
+                egui::pos2(filter_rect.left() + 10.0, filter_rect.center().y),
+                egui::Align2::LEFT_CENTER,
+                "\u{1F50D}",
+                egui::FontId::proportional(11.0),
+                FG3,
+            );
+            let inner_rect = egui::Rect::from_min_max(
+                filter_rect.min + egui::vec2(26.0, 2.0),
+                filter_rect.max - egui::vec2(6.0, 2.0),
+            );
+            let child_id = ui.id().with("tree_filter_edit");
+            let mut child =
+                ui.new_child(egui::UiBuilder::new().max_rect(inner_rect).id_salt(child_id));
+            child.add(
+                egui::TextEdit::singleline(&mut self.tree_filter)
+                    .frame(false)
+                    .hint_text("Filter..."),
             );
         });
-
         ui.add_space(8.0);
-        ui.separator();
+        let (sep_rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 1.0), egui::Sense::hover());
+        ui.painter().rect_filled(sep_rect, 0.0, BORDER1);
+        ui.add_space(4.0);
 
-        let parent_for_new = self.selected_node_id.clone();
-        ui.horizontal(|ui| {
-            ui.add_space(8.0);
-            ui.add_sized(
-                [(ui.available_width() - 96.0).max(80.0), 24.0],
-                egui::TextEdit::singleline(&mut self.new_node_title).hint_text("New node title"),
-            );
-            if ui.add(toolbar_button("Root")).clicked() {
-                self.create_node(None);
-            }
-            if ui.add(toolbar_button("Child")).clicked() {
-                self.create_node(parent_for_new);
-            }
-        });
-
-        ui.add_space(6.0);
-
+        // Tree & node list
         let mut next_tree = None;
         let mut next_node = None;
         let filter = self.tree_filter.trim().to_lowercase();
@@ -713,49 +1506,66 @@ impl SkillTreeApp {
         egui::ScrollArea::vertical().show(ui, |ui| {
             for index in 0..self.trees.len() {
                 let tree = &self.trees[index];
-                let selected = Some(index) == self.selected_tree;
+                let is_active = Some(index) == self.selected_tree;
                 let done = tree
                     .nodes
                     .iter()
-                    .filter(|node| node.status == NodeStatus::Completed)
+                    .filter(|n| n.status == NodeStatus::Completed)
                     .count();
-                let tree_label = format!(
-                    "{}    {done}/{}",
-                    truncate_label(&tree.title, 24),
-                    tree.nodes.len()
+
+                // Tree header row
+                let icon = tree_glyph(index);
+                let response = tree_header_row(
+                    ui,
+                    &truncate_label(&tree.title, 20),
+                    &format!("{}/{}", done, tree.nodes.len()),
+                    is_active,
+                    icon,
                 );
-                let response = rail_row(ui, tree_label, selected, None, 0.0, 28.0);
                 if response.clicked() {
                     next_tree = Some(index);
                 }
 
-                if selected {
+                // Node rows (only for active tree)
+                if is_active {
                     let rows = node_rows(tree)
                         .into_iter()
-                        .filter_map(|(node_id, depth)| {
+                        .filter_map(|(nid, depth)| {
                             tree.nodes
                                 .iter()
-                                .find(|node| node.id == node_id)
-                                .map(|node| (node.clone(), depth))
+                                .find(|n| n.id == nid)
+                                .map(|n| (n.clone(), depth))
                         })
                         .collect::<Vec<_>>();
 
                     for (node, depth) in rows {
-                        if !filter.is_empty() && !node.title.to_lowercase().contains(&filter) {
+                        if !filter.is_empty()
+                            && !node.title.to_lowercase().contains(&filter)
+                        {
                             continue;
+                        }
+                        if let Some(ref tag) = self.active_tag_filter {
+                            if !node.tags.iter().any(|t| t == tag) {
+                                continue;
+                            }
                         }
                         let is_selected =
                             self.selected_node_id.as_deref() == Some(node.id.as_str());
                         let color = status_color(&node.status);
-                        let max_chars = 26usize.saturating_sub(depth * 2).max(12);
-                        let label = truncate_label(&node.title, max_chars);
-                        let response = rail_row(
+                        let max_chars = 24usize.saturating_sub(depth * 2).max(12);
+                        let progress_label =
+                            if node.status == NodeStatus::InProgress && node.progress > 0 {
+                                Some(format!("{}%", node.progress))
+                            } else {
+                                None
+                            };
+                        let response = node_rail_row(
                             ui,
-                            label,
+                            &truncate_label(&node.title, max_chars),
                             is_selected,
-                            Some(color),
+                            color,
+                            progress_label.as_deref(),
                             (depth * 14) as f32,
-                            25.0,
                         );
                         if response.clicked() {
                             next_node = Some(node.id);
@@ -765,14 +1575,43 @@ impl SkillTreeApp {
             }
         });
 
+        // Footer row (folder icon + active tree path)
+        let footer_rect = egui::Rect::from_min_max(
+            egui::pos2(rect.left(), rect.bottom() - 30.0),
+            egui::pos2(rect.right(), rect.bottom()),
+        );
+        ui.painter().line_segment(
+            [footer_rect.left_top(), footer_rect.right_top()],
+            egui::Stroke::new(1.0, BORDER1),
+        );
+        let footer_path = self
+            .selected_tree_ref()
+            .map(|t| short_path(&t.folder, 34))
+            .unwrap_or_else(|| short_path(&self.storage_root, 34));
+        ui.painter().text(
+            egui::pos2(footer_rect.left() + 12.0, footer_rect.center().y),
+            egui::Align2::LEFT_CENTER,
+            "\u{1F4C1}",
+            egui::FontId::proportional(11.0),
+            FG3,
+        );
+        ui.painter().text(
+            egui::pos2(footer_rect.left() + 30.0, footer_rect.center().y),
+            egui::Align2::LEFT_CENTER,
+            footer_path,
+            egui::FontId::monospace(10.0),
+            FG3,
+        );
+
         if let Some(index) = next_tree {
             self.selected_tree = Some(index);
             let selected_exists = self
                 .selected_node_id
                 .as_deref()
-                .is_some_and(|id| self.trees[index].nodes.iter().any(|node| node.id == id));
+                .is_some_and(|id| self.trees[index].nodes.iter().any(|n| n.id == id));
             if !selected_exists {
-                self.selected_node_id = self.trees[index].nodes.first().map(|node| node.id.clone());
+                self.selected_node_id =
+                    self.trees[index].nodes.first().map(|n| n.id.clone());
             }
         }
         if let Some(node_id) = next_node {
@@ -916,17 +1755,12 @@ impl SkillTreeApp {
             self.selected_node_id = None;
         }
 
+        draw_canvas_vignette(&painter, rect);
+
         painter.text(
             rect.left_bottom() + egui::vec2(12.0, -16.0),
             egui::Align2::LEFT_CENTER,
-            "drag nodes / middle-drag pan / ctrl+scroll zoom / double-click fit",
-            egui::FontId::monospace(10.0),
-            FG3,
-        );
-        painter.text(
-            rect.right_bottom() + egui::vec2(-12.0, -16.0),
-            egui::Align2::RIGHT_CENTER,
-            format!("{:.0}%", self.canvas_zoom * 100.0),
+            "DRAG \u{00B7} MIDDLE-DRAG PAN \u{00B7} CTRL+SCROLL ZOOM",
             egui::FontId::monospace(10.0),
             FG3,
         );
@@ -1136,43 +1970,30 @@ impl SkillTreeApp {
         let Some(tree_index) = self.selected_tree else {
             ui.vertical_centered(|ui| {
                 ui.add_space(120.0);
-                ui.heading("Create a tree to start.");
-                ui.label(egui::RichText::new("Local files stay readable in Obsidian.").color(FG3));
+                ui.label(egui::RichText::new("No tree selected").color(FG2).size(16.0));
+                ui.add_space(6.0);
+                ui.label(
+                    egui::RichText::new("Create or select a tree to start")
+                        .color(FG3)
+                        .size(12.0),
+                );
             });
             return;
         };
 
-        let selected_node_id = self.selected_node_id.clone();
-        ui.label(
-            egui::RichText::new("INSPECTOR")
-                .monospace()
-                .color(FG3)
-                .size(11.0),
-        );
-        ui.horizontal(|ui| {
-            ui.heading(self.trees[tree_index].title.clone());
-            if ui.add(toolbar_button("Open folder")).clicked() {
-                let _ = opener::open(&self.trees[tree_index].folder);
-            }
-        });
-        ui.separator();
-
-        ui.collapsing("Tree metadata", |ui| {
-            ui.label("Title");
-            ui.text_edit_singleline(&mut self.trees[tree_index].title);
-            ui.label("Description");
-            let description = self.trees[tree_index]
-                .description
-                .get_or_insert_with(String::new);
-            ui.add(egui::TextEdit::multiline(description).desired_rows(3));
-        });
-
-        let Some(node_id) = selected_node_id else {
+        let Some(node_id) = self.selected_node_id.clone() else {
             ui.vertical_centered(|ui| {
                 ui.add_space(120.0);
-                ui.heading("No node selected");
                 ui.label(
-                    egui::RichText::new("Click an orb on the canvas to inspect it.").color(FG3),
+                    egui::RichText::new("No node selected")
+                        .color(FG2)
+                        .size(16.0),
+                );
+                ui.add_space(6.0);
+                ui.label(
+                    egui::RichText::new("Click a node on the canvas")
+                        .color(FG3)
+                        .size(12.0),
                 );
             });
             return;
@@ -1181,29 +2002,626 @@ impl SkillTreeApp {
         let Some(node_index) = self.trees[tree_index]
             .nodes
             .iter()
-            .position(|node| node.id == node_id)
+            .position(|n| n.id == node_id)
         else {
             ui.label("Node not found.");
             return;
         };
 
-        ui.separator();
-        let node_title = self.trees[tree_index].nodes[node_index].title.clone();
-        let node_status = self.trees[tree_index].nodes[node_index].status.clone();
-        let node_status_color = status_color(&node_status);
+        // Snapshot values for display (before mutable borrows)
+        let node = &self.trees[tree_index].nodes[node_index];
+        let node_status = node.status.clone();
+        let node_title = node.title.clone();
+        let node_progress = node.progress;
+        let node_difficulty = node.difficulty;
+        let node_est_hours = node.estimated_hours;
+        let subtask_done = node.sub_tasks.iter().filter(|t| t.done).count();
+        let subtask_total = node.sub_tasks.len();
+        let status_color_val = status_color(&node_status);
+
+        // ── Status Badge (pill) — clickable to cycle ──────────────
+        ui.add_space(8.0);
+        let mut badge_clicked = false;
+        {
+            let badge_text = match &node_status {
+                NodeStatus::InProgress => format!("IN PROGRESS  {}%", node_progress),
+                NodeStatus::Completed => "FORGED".to_string(),
+                NodeStatus::Available => "READY".to_string(),
+                NodeStatus::Locked => "SEALED".to_string(),
+            };
+            let badge_bg = egui::Color32::from_rgba_unmultiplied(
+                status_color_val.r(),
+                status_color_val.g(),
+                status_color_val.b(),
+                65,
+            );
+            ui.horizontal(|ui| {
+                ui.add_space(20.0);
+                let inner = egui::Frame::new()
+                    .fill(badge_bg)
+                    .corner_radius(2.0)
+                    .stroke(egui::Stroke::new(
+                        1.0,
+                        egui::Color32::from_rgba_unmultiplied(
+                            status_color_val.r(),
+                            status_color_val.g(),
+                            status_color_val.b(),
+                            110,
+                        ),
+                    ))
+                    .inner_margin(egui::Margin::symmetric(8, 3))
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            let (dot_rect, _) = ui.allocate_exact_size(
+                                egui::vec2(10.0, 10.0),
+                                egui::Sense::hover(),
+                            );
+                            ui.painter().circle_filled(
+                                dot_rect.center(),
+                                4.0,
+                                status_color_val,
+                            );
+                            ui.label(
+                                egui::RichText::new(&badge_text)
+                                    .monospace()
+                                    .color(status_color_val)
+                                    .size(11.0),
+                            );
+                        });
+                    });
+                let hit = ui.interact(
+                    inner.response.rect,
+                    ui.id().with("status-badge-cycle"),
+                    egui::Sense::click(),
+                );
+                if hit.clicked() {
+                    badge_clicked = true;
+                }
+                if hit.hovered() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                }
+
+                // Close and menu buttons (right-aligned)
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.add_space(12.0);
+                    if ui
+                        .add(
+                            egui::Button::new(
+                                egui::RichText::new("\u{00D7}").color(FG2).size(16.0),
+                            )
+                            .fill(egui::Color32::TRANSPARENT)
+                            .stroke(egui::Stroke::NONE)
+                            .min_size(egui::vec2(22.0, 22.0)),
+                        )
+                        .on_hover_text("Deselect")
+                        .clicked()
+                    {
+                        self.selected_node_id = None;
+                    }
+                    if ui
+                        .add(
+                            egui::Button::new(
+                                egui::RichText::new("\u{2022}\u{2022}\u{2022}")
+                                    .color(FG3)
+                                    .size(12.0),
+                            )
+                            .fill(egui::Color32::TRANSPARENT)
+                            .stroke(egui::Stroke::NONE)
+                            .min_size(egui::vec2(22.0, 22.0)),
+                        )
+                        .on_hover_text("More actions")
+                        .clicked()
+                    {
+                        self.show_edit_controls = !self.show_edit_controls;
+                    }
+                });
+            });
+        }
+        if badge_clicked {
+            let node = &mut self.trees[tree_index].nodes[node_index];
+            node.status = match node.status {
+                NodeStatus::Locked => NodeStatus::Available,
+                NodeStatus::Available => NodeStatus::InProgress,
+                NodeStatus::InProgress => NodeStatus::Completed,
+                NodeStatus::Completed => NodeStatus::Locked,
+            };
+        }
+
+        // ── Title ─────────────────────────────────────────────────
+        ui.add_space(12.0);
         ui.horizontal(|ui| {
-            ui.colored_label(node_status_color, "*");
+            ui.add_space(20.0);
+            // Inter SemiBold reads mixed-case; Cinzel is reserved for display
+            // flourishes (brand, orb initials) where caps are intended.
             ui.label(
-                egui::RichText::new(node_status.label())
-                    .monospace()
-                    .color(node_status_color)
-                    .size(11.0),
+                egui::RichText::new(&node_title)
+                    .size(20.0)
+                    .strong()
+                    .color(FG1),
             );
         });
-        ui.heading(&node_title);
+
+        // ── Metadata line ─────────────────────────────────────────
+        ui.add_space(2.0);
+        let node_tags = self.trees[tree_index].nodes[node_index].tags.clone();
+        ui.horizontal_wrapped(|ui| {
+            ui.add_space(12.0);
+            let hours_text = node_est_hours
+                .map(|h| format!("{:.0}h", h))
+                .unwrap_or_else(|| "-".to_string());
+            ui.label(
+                egui::RichText::new(format!("Difficulty {}/5", node_difficulty))
+                    .color(FG2)
+                    .size(12.0),
+            );
+            ui.label(egui::RichText::new("\u{00B7}").color(FG3).size(12.0));
+            ui.label(
+                egui::RichText::new(hours_text)
+                    .monospace()
+                    .color(FG2)
+                    .size(12.0),
+            );
+            // Tag pills
+            for tag in &node_tags {
+                ui.add_space(2.0);
+                let _ = tag_pill(ui, &format!("#{}", tag), false);
+            }
+        });
+
+        // ── Tab bar (Details / Markdown) ──────────────────────────
+        ui.add_space(14.0);
+        {
+            let (bar_rect, _) = ui.allocate_exact_size(
+                egui::vec2(ui.available_width(), 30.0),
+                egui::Sense::hover(),
+            );
+            ui.painter().rect_filled(bar_rect, 0.0, BG1);
+            ui.painter().line_segment(
+                [bar_rect.left_bottom(), bar_rect.right_bottom()],
+                egui::Stroke::new(1.0, BORDER1),
+            );
+            let labels = ["DETAILS", "MARKDOWN"];
+            let half = bar_rect.width() / labels.len() as f32;
+            for (i, label) in labels.iter().enumerate() {
+                let seg = egui::Rect::from_min_size(
+                    bar_rect.min + egui::vec2(i as f32 * half, 0.0),
+                    egui::vec2(half, bar_rect.height()),
+                );
+                let response = ui.interact(
+                    seg,
+                    ui.id().with(("inspector-tab", i)),
+                    egui::Sense::click(),
+                );
+                let is_sel = self.inspector_tab == i;
+                if is_sel {
+                    ui.painter().line_segment(
+                        [
+                            seg.left_bottom() + egui::vec2(0.0, -1.0),
+                            seg.right_bottom() + egui::vec2(0.0, -1.0),
+                        ],
+                        egui::Stroke::new(2.0, ACCENT),
+                    );
+                }
+                ui.painter().text(
+                    seg.center(),
+                    egui::Align2::CENTER_CENTER,
+                    *label,
+                    egui::FontId::monospace(11.0),
+                    if is_sel { FG1 } else { FG3 },
+                );
+                if response.clicked() {
+                    self.inspector_tab = i;
+                }
+            }
+        }
+
+        if self.inspector_tab == 1 {
+            // Markdown preview
+            ui.add_space(12.0);
+            let folder_text = self
+                .selected_tree_ref()
+                .map(|t| short_path(&t.folder, 28))
+                .unwrap_or_else(|| "~/skilltree".to_string());
+            ui.horizontal(|ui| {
+                ui.add_space(20.0);
+                ui.label(
+                    egui::RichText::new(format!("{}/nodes/{}.md", folder_text, node_id))
+                        .monospace()
+                        .color(FG3)
+                        .size(10.0),
+                );
+            });
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                ui.add_space(16.0);
+                let node = &self.trees[tree_index].nodes[node_index];
+                let body = render_node_note(&self.trees[tree_index], node);
+                let (body_rect, _) = ui.allocate_exact_size(
+                    egui::vec2(ui.available_width() - 16.0, 260.0),
+                    egui::Sense::hover(),
+                );
+                ui.painter().rect_filled(body_rect, 2.0, BG1);
+                ui.painter().rect_stroke(
+                    body_rect,
+                    2.0,
+                    egui::Stroke::new(1.0, BORDER1),
+                    egui::StrokeKind::Middle,
+                );
+                let inner = body_rect.shrink2(egui::vec2(12.0, 10.0));
+                let child_id = ui.id().with("md-preview");
+                let mut child = ui
+                    .new_child(egui::UiBuilder::new().max_rect(inner).id_salt(child_id));
+                child.add(
+                    egui::Label::new(
+                        egui::RichText::new(body)
+                            .monospace()
+                            .color(FG1)
+                            .size(11.0),
+                    )
+                    .wrap(),
+                );
+            });
+            return;
+        }
+
+        // ── DESCRIPTION ───────────────────────────────────────────
+        ui.add_space(14.0);
+        section_label(ui, "DESCRIPTION", None);
+        ui.add_space(4.0);
+        {
+            let node = &mut self.trees[tree_index].nodes[node_index];
+            let desc = node.description.get_or_insert_with(String::new);
+            ui.horizontal(|ui| {
+                ui.add_space(12.0);
+                ui.add_sized(
+                    [(ui.available_width() - 16.0).max(80.0), 56.0],
+                    egui::TextEdit::multiline(desc)
+                        .desired_rows(3)
+                        .frame(false)
+                        .text_color(FG2),
+                );
+            });
+        }
+
+        // ── PROGRESS ──────────────────────────────────────────────
+        ui.add_space(14.0);
+        section_label(ui, "PROGRESS", Some(&format!("{}%", node_progress)));
+        ui.add_space(4.0);
+        // Custom progress bar
+        ui.horizontal(|ui| {
+            ui.add_space(12.0);
+            let bar_w = (ui.available_width() - 16.0).max(40.0);
+            let (bar_rect, _) =
+                ui.allocate_exact_size(egui::vec2(bar_w, 8.0), egui::Sense::hover());
+            ui.painter().rect_filled(bar_rect, 4.0, BG0);
+            if node_progress > 0 {
+                let fill_rect = egui::Rect::from_min_size(
+                    bar_rect.min,
+                    egui::vec2(bar_w * node_progress as f32 / 100.0, 8.0),
+                );
+                ui.painter().rect_filled(fill_rect, 4.0, status_color_val);
+            }
+        });
+        ui.add_space(4.0);
+        ui.horizontal(|ui| {
+            ui.add_space(12.0);
+            ui.label(
+                egui::RichText::new(format!(
+                    "{} of {} subtasks complete",
+                    subtask_done, subtask_total
+                ))
+                .color(FG3)
+                .size(12.0),
+            );
+        });
+
+        // ── SUBTASKS ──────────────────────────────────────────────
+        ui.add_space(14.0);
+        section_label(
+            ui,
+            "SUBTASKS",
+            Some(&format!("{}/{}", subtask_done, subtask_total)),
+        );
+        ui.add_space(4.0);
+        {
+            let node = &mut self.trees[tree_index].nodes[node_index];
+            let mut remove_idx: Option<usize> = None;
+            let mut toggled: Vec<usize> = Vec::new();
+            for (idx, task) in node.sub_tasks.iter().enumerate() {
+                let task_done = task.done;
+                let task_title = task.title.clone();
+                ui.horizontal(|ui| {
+                    ui.add_space(20.0);
+                    let (check_rect, check_resp) =
+                        ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::click());
+                    let fill = if task_done { STATUS_DONE } else { egui::Color32::TRANSPARENT };
+                    let border = if task_done { STATUS_DONE } else { BORDER2 };
+                    ui.painter().rect_filled(check_rect, 2.0, fill);
+                    ui.painter().rect_stroke(
+                        check_rect,
+                        2.0,
+                        egui::Stroke::new(1.0, border),
+                        egui::StrokeKind::Middle,
+                    );
+                    if task_done {
+                        let c = check_rect.center();
+                        let a = c + egui::vec2(-3.5, 0.0);
+                        let b = c + egui::vec2(-1.0, 2.5);
+                        let d = c + egui::vec2(3.5, -3.0);
+                        ui.painter().line_segment([a, b], egui::Stroke::new(1.6, BG0));
+                        ui.painter().line_segment([b, d], egui::Stroke::new(1.6, BG0));
+                    }
+                    ui.add_space(4.0);
+                    let text = if task_done {
+                        egui::RichText::new(&task_title)
+                            .strikethrough()
+                            .color(FG3)
+                            .size(13.0)
+                    } else {
+                        egui::RichText::new(&task_title).color(FG1).size(13.0)
+                    };
+                    let r = ui.add(egui::Label::new(text).sense(egui::Sense::click()));
+                    if check_resp.clicked() || r.clicked() {
+                        toggled.push(idx);
+                    }
+                    if r.secondary_clicked() {
+                        remove_idx = Some(idx);
+                    }
+                });
+            }
+            for idx in toggled {
+                if let Some(task) = node.sub_tasks.get_mut(idx) {
+                    task.done = !task.done;
+                }
+            }
+            if let Some(idx) = remove_idx {
+                node.sub_tasks.remove(idx);
+            }
+            sync_progress_from_subtasks(node);
+        }
+        // Add subtask
+        ui.add_space(2.0);
+        ui.horizontal(|ui| {
+            ui.add_space(12.0);
+            let r = ui.add_sized(
+                [(ui.available_width() - 60.0).max(60.0), 22.0],
+                egui::TextEdit::singleline(&mut self.new_subtask_title)
+                    .hint_text("Add subtask..."),
+            );
+            if ui.add(toolbar_button("Add")).clicked()
+                || (r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)))
+            {
+                let title = self.new_subtask_title.trim().to_string();
+                if !title.is_empty() {
+                    self.trees[tree_index].nodes[node_index]
+                        .sub_tasks
+                        .push(SubTask {
+                            title,
+                            done: false,
+                        });
+                    self.new_subtask_title.clear();
+                }
+            }
+        });
+
+        // ── RESOURCES ─────────────────────────────────────────────
+        ui.add_space(14.0);
+        section_label(ui, "RESOURCES", None);
+        ui.add_space(4.0);
+        {
+            let node = &self.trees[tree_index].nodes[node_index];
+            for resource in &node.resources {
+                ui.horizontal(|ui| {
+                    ui.add_space(12.0);
+                    if ui
+                        .add(
+                            egui::Label::new(
+                                egui::RichText::new(&resource.title)
+                                    .color(ACCENT_2)
+                                    .size(12.0)
+                                    .underline(),
+                            )
+                            .sense(egui::Sense::click()),
+                        )
+                        .clicked()
+                    {
+                        let _ = opener::open(&resource.url);
+                    }
+                    ui.label(
+                        egui::RichText::new(&resource.url)
+                            .color(FG3)
+                            .size(10.0)
+                            .monospace(),
+                    );
+                });
+            }
+        }
+        ui.add_space(2.0);
+        ui.horizontal(|ui| {
+            ui.add_space(12.0);
+            let half = ((ui.available_width() - 56.0) * 0.5).max(40.0);
+            ui.add_sized(
+                [half, 22.0],
+                egui::TextEdit::singleline(&mut self.new_resource_title).hint_text("Title"),
+            );
+            ui.add_sized(
+                [half, 22.0],
+                egui::TextEdit::singleline(&mut self.new_resource_url).hint_text("URL"),
+            );
+            if ui.add(toolbar_button("Add")).clicked() {
+                let t = self.new_resource_title.trim().to_string();
+                let u = self.new_resource_url.trim().to_string();
+                if !t.is_empty() && !u.is_empty() {
+                    self.trees[tree_index].nodes[node_index]
+                        .resources
+                        .push(Resource { title: t, url: u });
+                    self.new_resource_title.clear();
+                    self.new_resource_url.clear();
+                }
+            }
+        });
+
+        // ── TAGS ──────────────────────────────────────────────────
+        ui.add_space(14.0);
+        section_label(ui, "TAGS", None);
+        ui.add_space(4.0);
+        {
+            let node = &mut self.trees[tree_index].nodes[node_index];
+            let mut remove_idx: Option<usize> = None;
+            ui.horizontal_wrapped(|ui| {
+                ui.add_space(12.0);
+                for (idx, tag) in node.tags.iter().enumerate() {
+                    if tag_pill(ui, &format!("#{}", tag), false).secondary_clicked() {
+                        remove_idx = Some(idx);
+                    }
+                }
+            });
+            if let Some(idx) = remove_idx {
+                node.tags.remove(idx);
+            }
+        }
+        ui.add_space(2.0);
+        ui.horizontal(|ui| {
+            ui.add_space(12.0);
+            let r = ui.add_sized(
+                [(ui.available_width() - 60.0).max(60.0), 22.0],
+                egui::TextEdit::singleline(&mut self.new_tag).hint_text("Add tag..."),
+            );
+            if ui.add(toolbar_button("Add")).clicked()
+                || (r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)))
+            {
+                let tag = self
+                    .new_tag
+                    .trim()
+                    .trim_start_matches('#')
+                    .to_string();
+                if !tag.is_empty() {
+                    let tags = &mut self.trees[tree_index].nodes[node_index].tags;
+                    if !tags.contains(&tag) {
+                        tags.push(tag);
+                    }
+                    self.new_tag.clear();
+                }
+            }
+        });
+
+        // ── NOTES ─────────────────────────────────────────────────
+        ui.add_space(14.0);
+        section_label(ui, "NOTES", None);
+        ui.add_space(4.0);
+        {
+            let node = &mut self.trees[tree_index].nodes[node_index];
+            let notes = node.notes.get_or_insert_with(String::new);
+            ui.horizontal(|ui| {
+                ui.add_space(12.0);
+                ui.add_sized(
+                    [(ui.available_width() - 16.0).max(80.0), 72.0],
+                    egui::TextEdit::multiline(notes)
+                        .desired_rows(4)
+                        .frame(false)
+                        .text_color(FG2),
+                );
+            });
+        }
+
+        // ── Advanced edit controls (toggle via ··· button) ────────
+        if self.show_edit_controls {
+            ui.add_space(12.0);
+            ui.horizontal(|ui| {
+                ui.add_space(12.0);
+                let (line_rect, _) = ui.allocate_exact_size(
+                    egui::vec2(ui.available_width() - 16.0, 1.0),
+                    egui::Sense::hover(),
+                );
+                ui.painter().rect_filled(line_rect, 0.0, BORDER1);
+            });
+            ui.add_space(8.0);
+            {
+                let node = &mut self.trees[tree_index].nodes[node_index];
+                ui.horizontal(|ui| {
+                    ui.add_space(12.0);
+                    ui.label(egui::RichText::new("Status").color(FG3).size(11.0));
+                    egui::ComboBox::from_id_salt("status_combo")
+                        .width(90.0)
+                        .selected_text(node.status.label())
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(
+                                &mut node.status,
+                                NodeStatus::Locked,
+                                NodeStatus::Locked.label(),
+                            );
+                            ui.selectable_value(
+                                &mut node.status,
+                                NodeStatus::Available,
+                                NodeStatus::Available.label(),
+                            );
+                            ui.selectable_value(
+                                &mut node.status,
+                                NodeStatus::InProgress,
+                                NodeStatus::InProgress.label(),
+                            );
+                            ui.selectable_value(
+                                &mut node.status,
+                                NodeStatus::Completed,
+                                NodeStatus::Completed.label(),
+                            );
+                        });
+                    ui.label(egui::RichText::new("Diff").color(FG3).size(11.0));
+                    ui.add(
+                        egui::Slider::new(&mut node.difficulty, 1..=5).show_value(false),
+                    );
+                });
+                ui.horizontal(|ui| {
+                    ui.add_space(12.0);
+                    ui.label(egui::RichText::new("Title").color(FG3).size(11.0));
+                    ui.add_sized(
+                        [(ui.available_width() - 8.0).max(60.0), 22.0],
+                        egui::TextEdit::singleline(&mut node.title),
+                    );
+                });
+                ui.horizontal(|ui| {
+                    ui.add_space(12.0);
+                    ui.label(egui::RichText::new("Hours").color(FG3).size(11.0));
+                    let mut hours = node.estimated_hours.unwrap_or(0.0);
+                    if ui
+                        .add(
+                            egui::DragValue::new(&mut hours)
+                                .range(0.0..=999.0)
+                                .speed(0.5),
+                        )
+                        .changed()
+                    {
+                        node.estimated_hours = if hours > 0.0 { Some(hours) } else { None };
+                    }
+                });
+            }
+
+            // Add child node
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                ui.add_space(12.0);
+                let r = ui.add_sized(
+                    [(ui.available_width() - 80.0).max(60.0), 22.0],
+                    egui::TextEdit::singleline(&mut self.new_node_title)
+                        .hint_text("New child node..."),
+                );
+                if ui.add(toolbar_button("Add")).clicked()
+                    || (r.lost_focus()
+                        && ui.input(|i| i.key_pressed(egui::Key::Enter))
+                        && !self.new_node_title.trim().is_empty())
+                {
+                    let parent = self.selected_node_id.clone();
+                    self.create_node(parent);
+                }
+            });
+        }
+
+        // ── Action buttons ────────────────────────────────────────
+        ui.add_space(10.0);
         let mut open_note = false;
         let mut save_tree = false;
         ui.horizontal(|ui| {
+            ui.add_space(12.0);
             if ui.add(toolbar_button("Open note")).clicked() {
                 open_note = true;
             }
@@ -1211,155 +2629,43 @@ impl SkillTreeApp {
                 save_tree = true;
             }
         });
-
-        {
-            let node = &mut self.trees[tree_index].nodes[node_index];
-
-            ui.label("Title");
-            ui.text_edit_singleline(&mut node.title);
-
-            ui.horizontal(|ui| {
-                ui.label("Status");
-                egui::ComboBox::from_id_salt("status_combo")
-                    .selected_text(node.status.label())
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(
-                            &mut node.status,
-                            NodeStatus::Locked,
-                            NodeStatus::Locked.label(),
-                        );
-                        ui.selectable_value(
-                            &mut node.status,
-                            NodeStatus::Available,
-                            NodeStatus::Available.label(),
-                        );
-                        ui.selectable_value(
-                            &mut node.status,
-                            NodeStatus::InProgress,
-                            NodeStatus::InProgress.label(),
-                        );
-                        ui.selectable_value(
-                            &mut node.status,
-                            NodeStatus::Completed,
-                            NodeStatus::Completed.label(),
-                        );
-                    });
-
-                ui.label("Difficulty");
-                ui.add(egui::Slider::new(&mut node.difficulty, 1..=5));
-                ui.label("Progress");
-                ui.add(egui::Slider::new(&mut node.progress, 0..=100).suffix("%"));
-            });
-            let node_color = status_color(&node.status);
-            ui.add(
-                egui::ProgressBar::new(node.progress as f32 / 100.0)
-                    .fill(node_color)
-                    .text(format!("{}%", node.progress)),
-            );
-
-            ui.label("Description");
-            let description = node.description.get_or_insert_with(String::new);
-            ui.add(egui::TextEdit::multiline(description).desired_rows(4));
-
-            ui.label("Notes");
-            let notes = node.notes.get_or_insert_with(String::new);
-            ui.add(egui::TextEdit::multiline(notes).desired_rows(8));
-
-            ui.separator();
-            ui.heading("Subtasks");
-            let mut remove_subtask: Option<usize> = None;
-            for (index, task) in node.sub_tasks.iter_mut().enumerate() {
-                ui.horizontal(|ui| {
-                    ui.checkbox(&mut task.done, "");
-                    ui.text_edit_singleline(&mut task.title);
-                    if ui.button("Remove").clicked() {
-                        remove_subtask = Some(index);
-                    }
-                });
-            }
-            if let Some(index) = remove_subtask {
-                node.sub_tasks.remove(index);
-            }
-            ui.horizontal(|ui| {
-                ui.text_edit_singleline(&mut self.new_subtask_title);
-                if ui.button("Add subtask").clicked() {
-                    let title = self.new_subtask_title.trim();
-                    if !title.is_empty() {
-                        node.sub_tasks.push(SubTask {
-                            title: title.to_string(),
-                            done: false,
-                        });
-                        self.new_subtask_title.clear();
-                    }
-                }
-            });
-            sync_progress_from_subtasks(node);
-
-            ui.separator();
-            ui.heading("Resources");
-            let mut remove_resource: Option<usize> = None;
-            for (index, resource) in node.resources.iter_mut().enumerate() {
-                ui.horizontal(|ui| {
-                    ui.text_edit_singleline(&mut resource.title);
-                    ui.text_edit_singleline(&mut resource.url);
-                    if ui.button("Open").clicked() {
-                        let _ = opener::open(&resource.url);
-                    }
-                    if ui.button("Remove").clicked() {
-                        remove_resource = Some(index);
-                    }
-                });
-            }
-            if let Some(index) = remove_resource {
-                node.resources.remove(index);
-            }
-            ui.horizontal(|ui| {
-                ui.text_edit_singleline(&mut self.new_resource_title);
-                ui.text_edit_singleline(&mut self.new_resource_url);
-                if ui.button("Add resource").clicked() {
-                    let title = self.new_resource_title.trim();
-                    let url = self.new_resource_url.trim();
-                    if !title.is_empty() && !url.is_empty() {
-                        node.resources.push(Resource {
-                            title: title.to_string(),
-                            url: url.to_string(),
-                        });
-                        self.new_resource_title.clear();
-                        self.new_resource_url.clear();
-                    }
-                }
-            });
-        }
-
-        ui.separator();
-        ui.heading("Dependencies");
-        let dependencies = self.trees[tree_index]
-            .edges
-            .iter()
-            .filter(|edge| edge.target_node_id == node_id)
-            .map(|edge| {
-                let source = self.trees[tree_index]
-                    .nodes
-                    .iter()
-                    .find(|candidate| candidate.id == edge.source_node_id)
-                    .map(|candidate| candidate.title.as_str())
-                    .unwrap_or(edge.source_node_id.as_str());
-                format!("{:?}: {}", edge.r#type, source)
-            })
-            .collect::<Vec<_>>();
-        if dependencies.is_empty() {
-            ui.label("No dependencies.");
-        } else {
-            for dependency in dependencies {
-                ui.label(dependency);
-            }
-        }
-
         if open_note {
             self.open_selected_node_note();
         }
         if save_tree {
             self.save_selected_tree();
+        }
+
+        // ── Dependencies ──────────────────────────────────────────
+        ui.add_space(14.0);
+        section_label(ui, "DEPENDENCIES", None);
+        ui.add_space(4.0);
+        let deps = self.trees[tree_index]
+            .edges
+            .iter()
+            .filter(|e| e.target_node_id == node_id)
+            .map(|e| {
+                let src = self.trees[tree_index]
+                    .nodes
+                    .iter()
+                    .find(|n| n.id == e.source_node_id)
+                    .map(|n| n.title.as_str())
+                    .unwrap_or(e.source_node_id.as_str());
+                format!("{:?}: {}", e.r#type, src)
+            })
+            .collect::<Vec<_>>();
+        if deps.is_empty() {
+            ui.horizontal(|ui| {
+                ui.add_space(12.0);
+                ui.label(egui::RichText::new("None").color(FG3).size(12.0));
+            });
+        } else {
+            for dep in deps {
+                ui.horizontal(|ui| {
+                    ui.add_space(12.0);
+                    ui.label(egui::RichText::new(dep).color(FG2).size(12.0));
+                });
+            }
         }
     }
 }
@@ -1664,6 +2970,7 @@ fn render_node_note(tree: &SkillTree, node: &SkillNode) -> String {
                 "subTreeId",
                 optional_json_string(node.sub_tree_id.as_deref())
             ),
+            ("tags", serde_json::to_string(&node.tags).unwrap()),
             (
                 "requires",
                 serde_json::to_string(&deps.prerequisite).unwrap()
@@ -1821,6 +3128,11 @@ fn parse_node_note(
             .get("subTreeId")
             .and_then(jsonish_to_string)
             .or_else(|| existing.and_then(|node| node.sub_tree_id.clone())),
+        tags: frontmatter
+            .get("tags")
+            .and_then(jsonish_to_string_array)
+            .or_else(|| existing.map(|node| node.tags.clone()))
+            .unwrap_or_default(),
     };
 
     let has_dependency_metadata = frontmatter.contains_key("requires")
@@ -2195,6 +3507,241 @@ fn optional_json_string(value: Option<&str>) -> String {
     value.map(json_string).unwrap_or_else(|| "null".to_string())
 }
 
+fn demo_trees() -> Vec<SkillTree> {
+    let tree_id = "demo-dsa";
+    let folder = PathBuf::from(default_storage_root()).join("dsa");
+    let mk_node = |id: &str,
+                   title: &str,
+                   status: NodeStatus,
+                   difficulty: u8,
+                   hours: f32,
+                   progress: u8,
+                   x: f32,
+                   y: f32,
+                   desc: &str,
+                   subs: &[(&str, bool)],
+                   tags: &[&str]|
+     -> SkillNode {
+        SkillNode {
+            tree_id: tree_id.to_string(),
+            id: id.to_string(),
+            parent_id: None,
+            title: title.to_string(),
+            description: Some(desc.to_string()),
+            difficulty,
+            estimated_hours: Some(hours),
+            progress,
+            status,
+            position_x: x,
+            position_y: y,
+            style: None,
+            sub_tasks: subs
+                .iter()
+                .map(|(t, d)| SubTask {
+                    title: (*t).to_string(),
+                    done: *d,
+                })
+                .collect(),
+            resources: Vec::new(),
+            notes: None,
+            sub_tree_id: None,
+            tags: tags.iter().map(|t| (*t).to_string()).collect(),
+        }
+    };
+    let nodes = vec![
+        mk_node("n1", "Arrays & linked lists", NodeStatus::Completed, 2, 3.0, 100,
+            180.0, 80.0,
+            "Contiguous memory, pointer chains, and when each wins.",
+            &[("Fundamentals", true), ("Pointer arithmetic", true), ("Runtime costs", true)],
+            &["foundations"]),
+        mk_node("n2", "Hash tables", NodeStatus::Completed, 2, 4.0, 100,
+            460.0, 80.0,
+            "Chained vs. open addressing, load factor, resizing.",
+            &[("Hashing functions", true), ("Collision handling", true)],
+            &["foundations"]),
+        mk_node("n3", "Binary search trees", NodeStatus::InProgress, 3, 6.0, 60,
+            320.0, 230.0,
+            "Insert, delete, in-order traversal. Degeneracy and balancing motivation.",
+            &[
+                ("Read intro chapter", true),
+                ("Implement in-order traversal", true),
+                ("Balance vs unbalanced notes", true),
+                ("Red-black tree walkthrough", false),
+                ("Practice set 1", false),
+            ],
+            &["trees", "balanced"]),
+        mk_node("n4", "Graph traversal", NodeStatus::Available, 3, 5.0, 0,
+            120.0, 380.0,
+            "DFS, BFS, topological sort; when to reach for each.",
+            &[("DFS recursive", false), ("BFS queue", false), ("Topological sort", false)],
+            &["graphs"]),
+        mk_node("n5", "Dynamic programming", NodeStatus::Available, 4, 8.0, 0,
+            320.0, 380.0,
+            "Memoization, tabulation, subproblem structure.",
+            &[("Knapsack", false), ("LIS / LCS", false), ("State compression", false)],
+            &["algorithms"]),
+        mk_node("n6", "Sorting fundamentals", NodeStatus::Available, 2, 4.0, 0,
+            520.0, 380.0,
+            "Comparison sorts, stability, external sorting.",
+            &[("Quicksort partitioning", false), ("Mergesort merge step", false), ("Stability proof", false)],
+            &["algorithms"]),
+        mk_node("n7", "Heaps & priority queues", NodeStatus::Locked, 3, 4.0, 0,
+            320.0, 520.0,
+            "Binary heap invariants, heapify, k-way merge.",
+            &[("Heapify", false), ("Top-k with min-heap", false)],
+            &["balanced"]),
+        mk_node("n8", "Tries & suffix structures", NodeStatus::Locked, 5, 9.0, 0,
+            540.0, 520.0,
+            "Tries, suffix arrays and their uses in text processing.",
+            &[("Basic trie insert", false), ("Suffix array O(n log n)", false)],
+            &["advanced"]),
+    ];
+    let mut edges: Vec<SkillEdge> = Vec::new();
+    let add_edge = |edges: &mut Vec<SkillEdge>, from: &str, to: &str, ty: EdgeType| {
+        edges.push(SkillEdge {
+            tree_id: tree_id.to_string(),
+            id: format!("{from}-{to}"),
+            source_node_id: from.to_string(),
+            target_node_id: to.to_string(),
+            r#type: ty,
+            style: None,
+        });
+    };
+    add_edge(&mut edges, "n1", "n3", EdgeType::Prerequisite);
+    add_edge(&mut edges, "n2", "n3", EdgeType::Prerequisite);
+    add_edge(&mut edges, "n3", "n4", EdgeType::Prerequisite);
+    add_edge(&mut edges, "n3", "n5", EdgeType::Prerequisite);
+    add_edge(&mut edges, "n3", "n6", EdgeType::Recommended);
+    add_edge(&mut edges, "n6", "n7", EdgeType::Prerequisite);
+    add_edge(&mut edges, "n3", "n8", EdgeType::Optional);
+
+    vec![SkillTree {
+        id: tree_id.to_string(),
+        user_id: "local".to_string(),
+        title: "Data structures & algorithms".to_string(),
+        description: Some("Core CS toolkit — visual walkthrough".to_string()),
+        slug: "dsa".to_string(),
+        is_public: false,
+        share_mode: ShareMode::Private,
+        theme: default_theme(),
+        canvas_state: None,
+        nodes,
+        edges,
+        folder,
+    }]
+}
+
+fn settings_path() -> PathBuf {
+    if let Some(dirs) = ProjectDirs::from("app", "skilltree", "skilltree-local") {
+        let dir = dirs.config_dir().to_path_buf();
+        let _ = fs::create_dir_all(&dir);
+        return dir.join(SETTINGS_FILE);
+    }
+    PathBuf::from(SETTINGS_FILE)
+}
+
+fn load_settings() -> AppSettings {
+    let path = settings_path();
+    match fs::read_to_string(&path) {
+        Ok(text) => serde_json::from_str(&text).unwrap_or_default(),
+        Err(_) => AppSettings::default(),
+    }
+}
+
+fn save_settings(settings: &AppSettings) -> Result<()> {
+    let path = settings_path();
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).ok();
+    }
+    let json = serde_json::to_string_pretty(settings)?;
+    fs::write(&path, json).with_context(|| format!("write {}", path.display()))?;
+    Ok(())
+}
+
+const CONJURE_SYSTEM_PROMPT: &str = "You are a skill-tree design assistant. Given a parent skill, propose concrete \
+     follow-up skills the learner should tackle next. Reply with STRICT JSON only, no \
+     markdown fences, shaped exactly as:\n\
+     {\"suggestions\":[{\"title\":\"...\",\"description\":\"...\",\"difficulty\":1-5,\"estimated_hours\":number}]}\n\
+     Keep titles under 48 characters.";
+
+fn build_conjure_user_prompt(title: &str, description: &str, user_ask: &str) -> String {
+    format!(
+        "Parent skill: {title}\nParent description: {description}\nUser ask: {user_ask}"
+    )
+}
+
+fn openrouter_complete(api_key: &str, model: &str, system: &str, user: &str) -> Result<String> {
+    if api_key.trim().is_empty() {
+        return Err(anyhow::anyhow!(
+            "No OpenRouter API key configured. Open Settings to paste one."
+        ));
+    }
+    let payload = serde_json::json!({
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user",   "content": user},
+        ],
+        "temperature": 0.6,
+    });
+    let response = ureq::post(OPENROUTER_URL)
+        .set("Authorization", &format!("Bearer {}", api_key.trim()))
+        .set("Content-Type", "application/json")
+        .set(
+            "HTTP-Referer",
+            &format!("https://github.com/{}/{}", GITHUB_OWNER, GITHUB_REPO),
+        )
+        .set("X-Title", "SkillTree Local")
+        .send_json(&payload);
+    let body: serde_json::Value = match response {
+        Ok(r) => r.into_json()?,
+        Err(ureq::Error::Status(status, r)) => {
+            let body = r.into_string().unwrap_or_default();
+            return Err(anyhow::anyhow!("OpenRouter HTTP {}: {}", status, body));
+        }
+        Err(err) => return Err(anyhow::anyhow!("OpenRouter transport error: {}", err)),
+    };
+    let content = body
+        .pointer("/choices/0/message/content")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Response missing choices[0].message.content"))?;
+    Ok(content.to_string())
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ConjureSuggestion {
+    title: String,
+    #[serde(default)]
+    description: String,
+    #[serde(default = "default_difficulty")]
+    difficulty: u8,
+    #[serde(default)]
+    estimated_hours: Option<f32>,
+}
+
+fn parse_conjure_json(raw: &str) -> Result<Vec<ConjureSuggestion>> {
+    // The model may wrap JSON in ```json ... ``` fences — strip them.
+    let cleaned = raw
+        .trim()
+        .trim_start_matches("```json")
+        .trim_start_matches("```")
+        .trim_end_matches("```")
+        .trim();
+    let value: serde_json::Value = serde_json::from_str(cleaned)
+        .with_context(|| format!("Parse JSON: {}", cleaned.chars().take(200).collect::<String>()))?;
+    let list = value
+        .get("suggestions")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| anyhow::anyhow!("Response missing `suggestions` array"))?;
+    let mut out = Vec::new();
+    for item in list {
+        if let Ok(s) = serde_json::from_value::<ConjureSuggestion>(item.clone()) {
+            out.push(s);
+        }
+    }
+    Ok(out)
+}
+
 fn default_storage_root() -> PathBuf {
     if let Ok(storage_root) = env::var("SKILLTREE_STORAGE_ROOT") {
         return PathBuf::from(storage_root);
@@ -2279,7 +3826,61 @@ fn update_error_message(error: anyhow::Error) -> String {
     format!("Update check failed: {error}")
 }
 
+fn apply_fonts(ctx: &egui::Context) {
+    let mut fonts = egui::FontDefinitions::default();
+
+    // Embedded Inter (sans) — matches handoff "var(--font-sans)"
+    const INTER: &[u8] = include_bytes!("../assets/Inter.ttf");
+    fonts.font_data.insert(
+        "inter".to_owned(),
+        std::sync::Arc::new(egui::FontData::from_static(INTER)),
+    );
+    fonts
+        .families
+        .entry(egui::FontFamily::Proportional)
+        .or_default()
+        .insert(0, "inter".to_owned());
+
+    // Embedded Cinzel (display) — matches handoff "var(--font-display)"
+    const CINZEL: &[u8] = include_bytes!("../assets/Cinzel.ttf");
+    fonts.font_data.insert(
+        "cinzel".to_owned(),
+        std::sync::Arc::new(egui::FontData::from_static(CINZEL)),
+    );
+    fonts.families.insert(
+        egui::FontFamily::Name("display".into()),
+        vec!["cinzel".to_owned(), "inter".to_owned()],
+    );
+
+    // Mono — prefer JetBrains Mono if installed (handoff default)
+    let mono_candidates = [
+        "/usr/share/fonts/jetbrains-mono/JetBrainsMono-Regular.ttf",
+        "/usr/share/fonts/truetype/jetbrains-mono/JetBrainsMono-Regular.ttf",
+        "/usr/share/fonts/TTF/JetBrainsMono-Regular.ttf",
+        "/Library/Fonts/JetBrainsMono-Regular.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
+    ];
+    for path in mono_candidates {
+        if let Ok(data) = std::fs::read(path) {
+            fonts.font_data.insert(
+                "ui_mono".to_owned(),
+                std::sync::Arc::new(egui::FontData::from_owned(data)),
+            );
+            fonts
+                .families
+                .entry(egui::FontFamily::Monospace)
+                .or_default()
+                .insert(0, "ui_mono".to_owned());
+            break;
+        }
+    }
+
+    ctx.set_fonts(fonts);
+}
+
 fn apply_design_system(ctx: &egui::Context) {
+    apply_fonts(ctx);
     let mut visuals = egui::Visuals::dark();
     visuals.panel_fill = BG0;
     visuals.window_fill = BG2;
@@ -2326,6 +3927,7 @@ fn toolbar_button(label: &'static str) -> egui::Button<'static> {
     egui::Button::new(egui::RichText::new(label).color(FG2).size(12.0))
         .fill(BG2)
         .stroke(egui::Stroke::new(1.0, BORDER2))
+        .corner_radius(2.0)
 }
 
 fn primary_toolbar_button(label: &'static str) -> egui::Button<'static> {
@@ -2337,18 +3939,105 @@ fn primary_toolbar_button(label: &'static str) -> egui::Button<'static> {
     )
     .fill(egui::Color32::from_rgb(42, 31, 11))
     .stroke(egui::Stroke::new(1.0, ACCENT))
+    .corner_radius(2.0)
 }
 
-fn rail_row(
+fn chip_button(label: &str) -> egui::Button<'_> {
+    egui::Button::new(egui::RichText::new(label).color(FG2).size(11.0))
+        .fill(BG2)
+        .stroke(egui::Stroke::new(1.0, BORDER2))
+        .corner_radius(2.0)
+        .min_size(egui::vec2(0.0, 24.0))
+}
+
+fn icon_chip(glyph: &str, active: bool) -> egui::Button<'_> {
+    let color = if active { FG1 } else { FG3 };
+    let fill = if active { BG3 } else { egui::Color32::TRANSPARENT };
+    egui::Button::new(egui::RichText::new(glyph).color(color).size(13.0))
+        .fill(fill)
+        .stroke(egui::Stroke::NONE)
+        .corner_radius(2.0)
+        .min_size(egui::vec2(24.0, 24.0))
+}
+
+fn vertical_divider(ui: &mut egui::Ui) {
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(1.0, 16.0), egui::Sense::hover());
+    ui.painter().rect_filled(rect, 0.0, BORDER1);
+}
+
+fn tree_glyph(index: usize) -> &'static str {
+    const GLYPHS: &[&str] = &["\u{25C6}", "\u{25B2}", "\u{2756}", "\u{25C9}", "\u{2726}"];
+    GLYPHS[index % GLYPHS.len()]
+}
+
+fn tree_header_row(
     ui: &mut egui::Ui,
-    label: String,
-    selected: bool,
-    dot: Option<egui::Color32>,
-    indent: f32,
-    height: f32,
+    title: &str,
+    count: &str,
+    active: bool,
+    icon: &str,
 ) -> egui::Response {
     let width = ui.available_width().max(1.0);
-    let (rect, response) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::click());
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(width, 30.0), egui::Sense::click());
+    let fill = if active {
+        BG4
+    } else if response.hovered() {
+        BG3
+    } else {
+        BG2
+    };
+    ui.painter().rect_filled(rect, 0.0, fill);
+
+    // Chevron
+    let chevron = if active { "\u{25BE}" } else { "\u{25B8}" };
+    ui.painter().text(
+        egui::pos2(rect.left() + 14.0, rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        chevron,
+        egui::FontId::proportional(10.0),
+        FG3,
+    );
+
+    // Tree icon
+    ui.painter().text(
+        egui::pos2(rect.left() + 32.0, rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        icon,
+        egui::FontId::proportional(12.0),
+        if active { ACCENT } else { FG3 },
+    );
+
+    // Title
+    let text_color = if active { FG1 } else { FG2 };
+    ui.painter().text(
+        egui::pos2(rect.left() + 50.0, rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        title,
+        egui::FontId::proportional(13.0),
+        text_color,
+    );
+
+    // Count (right)
+    ui.painter().text(
+        egui::pos2(rect.right() - 12.0, rect.center().y),
+        egui::Align2::RIGHT_CENTER,
+        count,
+        egui::FontId::monospace(11.0),
+        FG3,
+    );
+    response
+}
+
+fn node_rail_row(
+    ui: &mut egui::Ui,
+    title: &str,
+    selected: bool,
+    dot_color: egui::Color32,
+    progress: Option<&str>,
+    indent: f32,
+) -> egui::Response {
+    let width = ui.available_width().max(1.0);
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(width, 25.0), egui::Sense::click());
     let fill = if selected {
         BG4
     } else if response.hovered() {
@@ -2364,22 +4053,87 @@ fn rail_row(
         );
     }
 
-    let mut text_x = rect.left() + 12.0 + indent;
-    if let Some(dot_color) = dot {
-        ui.painter()
-            .circle_filled(egui::pos2(text_x + 3.0, rect.center().y), 3.0, dot_color);
-        text_x += 14.0;
-    }
+    let text_x = rect.left() + 30.0 + indent;
+
+    // Status dot
+    ui.painter()
+        .circle_filled(egui::pos2(text_x - 10.0, rect.center().y), 3.5, dot_color);
+
+    // Node title
     let text_color = if selected { FG1 } else { FG2 };
     ui.painter().text(
         egui::pos2(text_x, rect.center().y),
         egui::Align2::LEFT_CENTER,
-        label,
-        egui::FontId::monospace(12.0),
+        title,
+        egui::FontId::proportional(13.0),
         text_color,
+    );
+
+    // Progress % (right)
+    if let Some(pct) = progress {
+        ui.painter().text(
+            egui::pos2(rect.right() - 12.0, rect.center().y),
+            egui::Align2::RIGHT_CENTER,
+            pct,
+            egui::FontId::monospace(11.0),
+            FG3,
+        );
+    }
+    response
+}
+
+fn tag_pill(ui: &mut egui::Ui, tag: &str, active: bool) -> egui::Response {
+    let label = tag.to_string();
+    let galley = ui.painter().layout_no_wrap(
+        label.clone(),
+        egui::FontId::proportional(11.0),
+        if active { ACCENT_2 } else { FG2 },
+    );
+    let pill_size = egui::vec2(galley.size().x + 14.0, 20.0);
+    let (rect, response) = ui.allocate_exact_size(pill_size, egui::Sense::click());
+    let bg = if active {
+        egui::Color32::from_rgba_unmultiplied(217, 178, 76, 40)
+    } else if response.hovered() {
+        BG3
+    } else {
+        BG1
+    };
+    let border = if active { ACCENT } else { BORDER2 };
+    ui.painter().rect_filled(rect, 3.0, bg);
+    ui.painter().rect_stroke(
+        rect,
+        3.0,
+        egui::Stroke::new(1.0, border),
+        egui::StrokeKind::Middle,
+    );
+    ui.painter().text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        &label,
+        egui::FontId::proportional(11.0),
+        if active { ACCENT_2 } else { FG2 },
     );
     response
 }
+
+fn section_label(ui: &mut egui::Ui, label: &str, right_text: Option<&str>) {
+    ui.horizontal(|ui| {
+        ui.add_space(12.0);
+        ui.label(
+            egui::RichText::new(label)
+                .monospace()
+                .color(FG3)
+                .size(11.0),
+        );
+        if let Some(rt) = right_text {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.add_space(12.0);
+                ui.label(egui::RichText::new(rt).color(FG2).size(12.0));
+            });
+        }
+    });
+}
+
 
 fn short_path(path: &Path, max_chars: usize) -> String {
     let value = path.display().to_string();
@@ -2397,24 +4151,70 @@ fn short_path(path: &Path, max_chars: usize) -> String {
     format!("...{tail}")
 }
 
+fn radial_disc_mesh(center: egui::Pos2, radius: f32, inner: egui::Color32, outer: egui::Color32) -> egui::Shape {
+    let segments = 96u32;
+    let mut mesh = egui::Mesh::default();
+    mesh.colored_vertex(center, inner);
+    for i in 0..=segments {
+        let a = std::f32::consts::TAU * i as f32 / segments as f32;
+        mesh.colored_vertex(center + egui::vec2(a.cos(), a.sin()) * radius, outer);
+    }
+    for i in 0..segments {
+        mesh.add_triangle(0, i + 1, i + 2);
+    }
+    egui::Shape::mesh(mesh)
+}
+
+fn radial_ring_mesh(
+    center: egui::Pos2,
+    r_inner: f32,
+    r_outer: f32,
+    inner: egui::Color32,
+    outer: egui::Color32,
+) -> egui::Shape {
+    let segments = 96u32;
+    let mut mesh = egui::Mesh::default();
+    for i in 0..=segments {
+        let a = std::f32::consts::TAU * i as f32 / segments as f32;
+        let dir = egui::vec2(a.cos(), a.sin());
+        mesh.colored_vertex(center + dir * r_inner, inner);
+        mesh.colored_vertex(center + dir * r_outer, outer);
+    }
+    for i in 0..segments {
+        let base = i * 2;
+        mesh.add_triangle(base, base + 1, base + 2);
+        mesh.add_triangle(base + 1, base + 3, base + 2);
+    }
+    egui::Shape::mesh(mesh)
+}
+
 fn draw_canvas_background(
     painter: &egui::Painter,
     rect: egui::Rect,
     offset: egui::Vec2,
     zoom: f32,
 ) {
-    painter.rect_filled(rect, 0.0, BG1);
-    painter.circle_filled(
-        rect.center(),
-        rect.width().max(rect.height()) * 0.62,
-        egui::Color32::from_rgba_unmultiplied(21, 32, 47, 185),
-    );
-    painter.rect_filled(
-        rect,
-        0.0,
-        egui::Color32::from_rgba_unmultiplied(5, 8, 15, 110),
-    );
+    // Floor = deep near-black
+    painter.rect_filled(rect, 0.0, egui::Color32::from_rgb(5, 8, 15));
 
+    // Smooth radial gradient via GPU-interpolated mesh
+    let center = rect.center() + egui::vec2(0.0, -rect.height() * 0.04);
+    let reach = rect.width().max(rect.height()) * 0.70;
+    painter.add(radial_disc_mesh(
+        center,
+        reach,
+        egui::Color32::from_rgb(38, 54, 80),
+        egui::Color32::from_rgba_unmultiplied(5, 8, 15, 0),
+    ));
+    // A tighter inner glow for extra luminosity
+    painter.add(radial_disc_mesh(
+        center,
+        reach * 0.45,
+        egui::Color32::from_rgba_unmultiplied(54, 74, 108, 170),
+        egui::Color32::from_rgba_unmultiplied(30, 46, 70, 0),
+    ));
+
+    // Grid dots (gold, very subtle)
     let grid = (72.0 * zoom).max(20.0);
     let mut x = rect.left() + offset.x.rem_euclid(grid);
     while x < rect.right() {
@@ -2422,32 +4222,67 @@ fn draw_canvas_background(
         while y < rect.bottom() {
             painter.circle_filled(
                 egui::pos2(x, y),
-                1.2,
-                egui::Color32::from_rgba_unmultiplied(180, 150, 90, 28),
+                1.0,
+                egui::Color32::from_rgba_unmultiplied(180, 150, 90, 22),
             );
             y += grid;
         }
         x += grid;
     }
+
+    // Deterministic starfield
+    let star_seeds: &[(f32, f32, u8)] = &[
+        (0.13, 0.22, 46), (0.82, 0.18, 36), (0.44, 0.77, 40), (0.70, 0.58, 30),
+        (0.24, 0.48, 36), (0.90, 0.84, 36), (0.60, 0.12, 28), (0.08, 0.80, 34),
+        (0.36, 0.34, 30), (0.66, 0.72, 26), (0.18, 0.64, 30), (0.94, 0.44, 26),
+        (0.52, 0.28, 28), (0.76, 0.40, 24), (0.30, 0.88, 24), (0.04, 0.32, 22),
+    ];
+    for (fx, fy, alpha) in star_seeds {
+        painter.circle_filled(
+            egui::pos2(rect.left() + rect.width() * *fx, rect.top() + rect.height() * *fy),
+            0.9,
+            egui::Color32::from_rgba_unmultiplied(255, 240, 200, *alpha),
+        );
+    }
+}
+
+fn draw_canvas_vignette(painter: &egui::Painter, rect: egui::Rect) {
+    // True smooth vignette: ring mesh that fades from transparent at ~50%
+    // of the diagonal to dark near the edges.
+    let r_inner = rect.size().length() * 0.32;
+    let r_outer = rect.size().length() * 0.70;
+    painter.add(radial_ring_mesh(
+        rect.center(),
+        r_inner,
+        r_outer,
+        egui::Color32::from_rgba_unmultiplied(0, 0, 0, 0),
+        egui::Color32::from_rgba_unmultiplied(0, 0, 0, 155),
+    ));
 }
 
 fn draw_canvas_empty(painter: &egui::Painter, rect: egui::Rect, title: &str) {
+    let center = rect.center() + egui::vec2(0.0, -24.0);
     painter.circle_filled(
-        rect.center() + egui::vec2(0.0, -20.0),
-        26.0,
-        egui::Color32::from_rgba_unmultiplied(35, 45, 64, 210),
+        center,
+        32.0,
+        egui::Color32::from_rgba_unmultiplied(35, 45, 64, 160),
     );
     painter.circle_stroke(
-        rect.center() + egui::vec2(0.0, -20.0),
-        26.0,
-        egui::Stroke::new(1.0, BORDER2),
+        center,
+        32.0,
+        egui::Stroke::new(1.5, BORDER3),
+    );
+    painter.circle_stroke(
+        center,
+        20.0,
+        egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(217, 178, 76, 80)),
     );
     painter.text(
-        rect.center() + egui::vec2(0.0, 24.0),
+        rect.center() + egui::vec2(0.0, 32.0),
         egui::Align2::CENTER_CENTER,
         title,
-        egui::FontId::proportional(16.0),
-        FG2,
+        egui::FontId::new(16.0, egui::FontFamily::Name("display".into())),
+        FG1,
     );
 }
 
@@ -2510,10 +4345,18 @@ fn draw_canvas_edge(
         .collect::<Vec<_>>();
 
     if lit {
-        painter.line(
-            points.clone(),
-            egui::Stroke::new(5.0, egui::Color32::from_rgba_unmultiplied(217, 178, 76, 42)),
-        );
+        // Stacked translucent strokes approximate the blur filter used in CSS.
+        let halo = [
+            (9.0, 14u8),
+            (6.0, 26u8),
+            (3.5, 50u8),
+        ];
+        for (w, a) in halo {
+            painter.line(
+                points.clone(),
+                egui::Stroke::new(w, egui::Color32::from_rgba_unmultiplied(217, 178, 76, a)),
+            );
+        }
     }
     painter.line(points, egui::Stroke::new(width, color));
 }
@@ -2527,64 +4370,96 @@ fn draw_canvas_node(
 ) {
     let status = status_color(&node.status);
     let is_keystone = node.difficulty >= 5;
-    let size = if is_keystone { 92.0 } else { 76.0 } * zoom;
+    let size = if is_keystone { 104.0 } else { 86.0 } * zoom;
     let radius = size * 0.5;
-    let fill = if selected { BG4 } else { BG2 };
-    let inner = egui::Color32::from_rgb(13, 19, 30);
 
-    if selected {
-        painter.circle_filled(
+    // ── True CSS drop-shadow via a ring mesh (smooth alpha falloff) ──
+    let halo_spec: Option<(f32, u8)> = match (selected, &node.status) {
+        (true, _)                             => Some((38.0, 180)),
+        (_, NodeStatus::Completed)            => Some((24.0, 150)),
+        (_, NodeStatus::InProgress)           => Some((30.0, 160)),
+        (_, NodeStatus::Available)            => Some((16.0, 110)),
+        (_, NodeStatus::Locked)               => None,
+    };
+    if let Some((reach, core_alpha)) = halo_spec {
+        painter.add(radial_ring_mesh(
             center,
-            radius + 12.0 * zoom,
-            egui::Color32::from_rgba_unmultiplied(status.r(), status.g(), status.b(), 36),
-        );
-    } else if node.status == NodeStatus::InProgress || node.status == NodeStatus::Completed {
-        painter.circle_filled(
-            center,
-            radius + 8.0 * zoom,
-            egui::Color32::from_rgba_unmultiplied(status.r(), status.g(), status.b(), 22),
-        );
+            (radius - 1.0).max(2.0),
+            radius + reach * zoom,
+            egui::Color32::from_rgba_unmultiplied(status.r(), status.g(), status.b(), core_alpha),
+            egui::Color32::from_rgba_unmultiplied(status.r(), status.g(), status.b(), 0),
+        ));
     }
 
+    // ── Body fill: true radial gradient via mesh ──
+    //   center:  dark-navy highlight (slightly offset upward — "lit from above")
+    //   70%:     #0d131e
+    //   edge:    #05080f
+    let body_inner = if selected {
+        egui::Color32::from_rgb(42, 52, 80)
+    } else {
+        egui::Color32::from_rgb(26, 34, 50)
+    };
+    let body_outer = egui::Color32::from_rgb(5, 8, 15);
+    let body_center = center + egui::vec2(0.0, -radius * 0.15);
+
     if is_keystone {
-        let points = (0..6)
-            .map(|index| {
-                let angle = std::f32::consts::TAU / 6.0 * index as f32;
-                center + egui::vec2(angle.cos() * radius, angle.sin() * radius)
-            })
-            .collect::<Vec<_>>();
+        let polygon = |r: f32| -> Vec<egui::Pos2> {
+            (0..6)
+                .map(|i| {
+                    let a = std::f32::consts::TAU / 6.0 * i as f32;
+                    center + egui::vec2(a.cos() * r, a.sin() * r)
+                })
+                .collect()
+        };
+        // Outer hex floor
         painter.add(egui::Shape::convex_polygon(
-            points.clone(),
-            fill,
+            polygon(radius - 2.0 * zoom),
+            body_outer,
+            egui::Stroke::NONE,
+        ));
+        // Radial highlight inscribed in the hex
+        painter.add(radial_disc_mesh(
+            body_center,
+            radius * 0.88,
+            body_inner,
+            body_outer,
+        ));
+        painter.add(egui::Shape::closed_line(
+            polygon(radius - 2.0 * zoom),
             egui::Stroke::new(4.0 * zoom, status),
         ));
         painter.add(egui::Shape::closed_line(
-            points,
+            polygon(radius - 8.0 * zoom),
             egui::Stroke::new(
                 1.0,
-                egui::Color32::from_rgba_unmultiplied(255, 220, 140, 32),
+                egui::Color32::from_rgba_unmultiplied(255, 220, 140, 28),
             ),
         ));
     } else {
-        painter.circle_filled(center, radius, fill);
-        painter.circle_stroke(center, radius, egui::Stroke::new(4.0 * zoom, status));
+        painter.add(radial_disc_mesh(
+            body_center,
+            radius - 2.0 * zoom,
+            body_inner,
+            body_outer,
+        ));
+        painter.circle_stroke(center, radius - 2.0 * zoom, egui::Stroke::new(4.0 * zoom, status));
         painter.circle_stroke(
             center,
             radius - 8.0 * zoom,
             egui::Stroke::new(
                 1.0,
-                egui::Color32::from_rgba_unmultiplied(255, 220, 140, 22),
+                egui::Color32::from_rgba_unmultiplied(255, 220, 140, 24),
             ),
         );
     }
-    painter.circle_filled(center, (radius - 12.0 * zoom).max(8.0), inner);
 
     if node.status == NodeStatus::InProgress {
-        let arc_radius = radius;
-        let end = node.progress as f32 / 100.0 * std::f32::consts::TAU;
-        let arc = (0..=32)
+        let arc_radius = radius - 2.0 * zoom;
+        let end = (node.progress as f32 / 100.0).clamp(0.0, 1.0) * std::f32::consts::TAU;
+        let arc = (0..=40)
             .map(|index| {
-                let angle = -std::f32::consts::FRAC_PI_2 + end * index as f32 / 32.0;
+                let angle = -std::f32::consts::FRAC_PI_2 + end * index as f32 / 40.0;
                 center + egui::vec2(angle.cos() * arc_radius, angle.sin() * arc_radius)
             })
             .collect::<Vec<_>>();
@@ -2637,7 +4512,10 @@ fn draw_canvas_node(
                 center,
                 egui::Align2::CENTER_CENTER,
                 initials(&node.title),
-                egui::FontId::proportional(if is_keystone { 22.0 } else { 18.0 } * zoom),
+                egui::FontId::new(
+                    if is_keystone { 22.0 } else { 18.0 } * zoom,
+                    egui::FontFamily::Name("display".into()),
+                ),
                 ACCENT,
             );
         }
@@ -2691,22 +4569,25 @@ fn draw_canvas_node(
     );
 
     let done = node.sub_tasks.iter().filter(|task| task.done).count();
+    let status_label = match node.status {
+        NodeStatus::Locked => "SEALED".to_string(),
+        NodeStatus::Available => "READY".to_string(),
+        NodeStatus::InProgress => format!("IN PROGRESS \u{00B7} {}%", node.progress),
+        NodeStatus::Completed => "FORGED".to_string(),
+    };
+    let hours = node
+        .estimated_hours
+        .map(|hours| format!("{hours:.0}h"))
+        .unwrap_or_else(|| "-".to_string());
     let meta = format!(
-        "{}{} / {}/{} / {}h",
-        node.status.label(),
-        if node.status == NodeStatus::InProgress {
-            format!(" {}%", node.progress)
-        } else {
-            String::new()
-        },
+        "{}  \u{00B7}  {}/{}  \u{00B7}  {}",
+        status_label,
         done,
         node.sub_tasks.len(),
-        node.estimated_hours
-            .map(|hours| format!("{hours:.0}"))
-            .unwrap_or_else(|| "-".to_string())
+        hours,
     );
     painter.text(
-        plate.center_bottom() + egui::vec2(0.0, 12.0 * zoom),
+        plate.center_bottom() + egui::vec2(0.0, 10.0 * zoom),
         egui::Align2::CENTER_CENTER,
         meta,
         egui::FontId::monospace(10.0 * zoom),
@@ -2848,6 +4729,7 @@ mod tests {
             }],
             notes: Some("Use this inside Obsidian too.".to_string()),
             sub_tree_id: None,
+            tags: vec!["foundations".to_string()],
         }
     }
 
@@ -2958,5 +4840,53 @@ mod tests {
 
         assert_eq!(node.progress, 100);
         assert_eq!(node.status, NodeStatus::Completed);
+    }
+
+    // Live integration — gated behind `SKILLTREE_LIVE=1` so normal
+    // `cargo test` never hits the network. Mirrors exactly what the
+    // Conjure button builds in `start_conjure_request`.
+    #[test]
+    fn live_openrouter_conjure_end_to_end() {
+        if std::env::var("SKILLTREE_LIVE").ok().as_deref() != Some("1") {
+            eprintln!("skip: set SKILLTREE_LIVE=1 to run");
+            return;
+        }
+        let settings = load_settings();
+        assert!(
+            !settings.openrouter_api_key.trim().is_empty(),
+            "settings.json has no openrouter_api_key"
+        );
+        let user = build_conjure_user_prompt(
+            "Binary search trees",
+            "Insert, delete, in-order traversal. Balancing motivation.",
+            "Suggest 3 child skills that deepen this.",
+        );
+        let raw = openrouter_complete(
+            &settings.openrouter_api_key,
+            &settings.openrouter_model,
+            CONJURE_SYSTEM_PROMPT,
+            &user,
+        )
+        .expect("openrouter call succeeded");
+        let list = parse_conjure_json(&raw).expect("parse JSON suggestions");
+        assert!(!list.is_empty(), "model returned zero suggestions");
+        println!(
+            "\nLIVE Conjure OK — model: {} — {} suggestion(s):",
+            settings.openrouter_model,
+            list.len()
+        );
+        for s in &list {
+            let hours = s
+                .estimated_hours
+                .map(|h| format!("{h:.0}h"))
+                .unwrap_or_else(|| "?".into());
+            println!(
+                "  • {} [diff {}/5, {}] — {}",
+                s.title,
+                s.difficulty.clamp(1, 5),
+                hours,
+                s.description,
+            );
+        }
     }
 }
