@@ -504,13 +504,13 @@ impl eframe::App for SkillTreeApp {
             .show(ctx, |ui| self.render_status_bar(ui));
 
         egui::SidePanel::left("tree_sidebar")
-            .resizable(true)
-            .default_width(300.0)
+            .resizable(false)
+            .exact_width(260.0)
             .show(ctx, |ui| self.render_tree_rail(ui));
 
         egui::SidePanel::right("inspector")
-            .resizable(true)
-            .default_width(380.0)
+            .resizable(false)
+            .exact_width(380.0)
             .show(ctx, |ui| self.render_inspector(ui));
 
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -719,16 +719,12 @@ impl SkillTreeApp {
                     .iter()
                     .filter(|node| node.status == NodeStatus::Completed)
                     .count();
-                let tree_label = format!("{}    {done}/{}", tree.title, tree.nodes.len());
-                let response = ui.add_sized(
-                    [ui.available_width(), 27.0],
-                    rail_button(
-                        tree_label,
-                        selected,
-                        0.0,
-                        if selected { ACCENT } else { FG2 },
-                    ),
+                let tree_label = format!(
+                    "{}    {done}/{}",
+                    truncate_label(&tree.title, 24),
+                    tree.nodes.len()
                 );
+                let response = rail_row(ui, tree_label, selected, None, 0.0, 28.0);
                 if response.clicked() {
                     next_tree = Some(index);
                 }
@@ -751,11 +747,15 @@ impl SkillTreeApp {
                         let is_selected =
                             self.selected_node_id.as_deref() == Some(node.id.as_str());
                         let color = status_color(&node.status);
-                        let prefix = format!("{}* ", "  ".repeat(depth));
-                        let label = format!("{prefix}{}", node.title);
-                        let response = ui.add_sized(
-                            [ui.available_width(), 25.0],
-                            rail_button(label, is_selected, (depth * 10) as f32, color),
+                        let max_chars = 26usize.saturating_sub(depth * 2).max(12);
+                        let label = truncate_label(&node.title, max_chars);
+                        let response = rail_row(
+                            ui,
+                            label,
+                            is_selected,
+                            Some(color),
+                            (depth * 14) as f32,
+                            25.0,
                         );
                         if response.clicked() {
                             next_node = Some(node.id);
@@ -926,6 +926,154 @@ impl SkillTreeApp {
         painter.text(
             rect.right_bottom() + egui::vec2(-12.0, -16.0),
             egui::Align2::RIGHT_CENTER,
+            format!("{:.0}%", self.canvas_zoom * 100.0),
+            egui::FontId::monospace(10.0),
+            FG3,
+        );
+        self.render_canvas_overlays(ui, rect, &nodes, &edges);
+    }
+
+    fn render_canvas_overlays(
+        &mut self,
+        ui: &mut egui::Ui,
+        canvas_rect: egui::Rect,
+        nodes: &[SkillNode],
+        edges: &[SkillEdge],
+    ) {
+        if nodes.is_empty() {
+            return;
+        }
+
+        let painter = ui.painter();
+        let mini_rect = egui::Rect::from_min_size(
+            canvas_rect.right_top() + egui::vec2(-172.0, 12.0),
+            egui::vec2(160.0, 110.0),
+        );
+        painter.rect_filled(
+            mini_rect,
+            4.0,
+            egui::Color32::from_rgba_unmultiplied(10, 14, 22, 225),
+        );
+        painter.rect_stroke(
+            mini_rect,
+            4.0,
+            egui::Stroke::new(1.0, BORDER2),
+            egui::StrokeKind::Middle,
+        );
+
+        let bounds = world_bounds(nodes);
+        let scale = ((mini_rect.width() - 16.0) / bounds.width().max(1.0))
+            .min((mini_rect.height() - 16.0) / bounds.height().max(1.0));
+        let map_point = |world: egui::Vec2| -> egui::Pos2 {
+            mini_rect.left_top()
+                + egui::vec2(8.0, 8.0)
+                + egui::vec2(world.x - bounds.min.x, world.y - bounds.min.y) * scale
+        };
+        let by_id = nodes
+            .iter()
+            .map(|node| (node.id.as_str(), node))
+            .collect::<HashMap<_, _>>();
+        for edge in edges {
+            let Some(source) = by_id.get(edge.source_node_id.as_str()) else {
+                continue;
+            };
+            let Some(target) = by_id.get(edge.target_node_id.as_str()) else {
+                continue;
+            };
+            painter.line_segment(
+                [
+                    map_point(egui::vec2(
+                        source.position_x + NODE_COLUMN_WIDTH / 2.0,
+                        source.position_y + NODE_ORB_CENTER_Y,
+                    )),
+                    map_point(egui::vec2(
+                        target.position_x + NODE_COLUMN_WIDTH / 2.0,
+                        target.position_y + NODE_ORB_CENTER_Y,
+                    )),
+                ],
+                egui::Stroke::new(0.8, BORDER2),
+            );
+        }
+        for node in nodes {
+            let point = map_point(egui::vec2(
+                node.position_x + NODE_COLUMN_WIDTH / 2.0,
+                node.position_y + NODE_ORB_CENTER_Y,
+            ));
+            painter.circle_filled(
+                point,
+                if self.selected_node_id.as_deref() == Some(node.id.as_str()) {
+                    2.8
+                } else {
+                    1.8
+                },
+                status_color(&node.status),
+            );
+        }
+
+        let mini_response = ui.interact(
+            mini_rect,
+            ui.id().with("canvas-mini-map"),
+            egui::Sense::click(),
+        );
+        if mini_response.clicked() {
+            if let Some(pos) = mini_response.interact_pointer_pos() {
+                let world = bounds.min.to_vec2()
+                    + (pos - mini_rect.left_top() - egui::vec2(8.0, 8.0)) / scale;
+                self.canvas_offset = canvas_rect.size() * 0.5 - world * self.canvas_zoom;
+            }
+        }
+
+        let controls = egui::Rect::from_min_size(
+            canvas_rect.right_bottom() + egui::vec2(-150.0, -52.0),
+            egui::vec2(138.0, 30.0),
+        );
+        painter.rect_filled(
+            controls,
+            4.0,
+            egui::Color32::from_rgba_unmultiplied(10, 14, 22, 225),
+        );
+        painter.rect_stroke(
+            controls,
+            4.0,
+            egui::Stroke::new(1.0, BORDER2),
+            egui::StrokeKind::Middle,
+        );
+
+        let button_w = 30.0;
+        let minus =
+            egui::Rect::from_min_size(controls.min, egui::vec2(button_w, controls.height()));
+        let fit = minus.translate(egui::vec2(button_w, 0.0));
+        let plus = fit.translate(egui::vec2(button_w, 0.0));
+        let label_rect =
+            egui::Rect::from_min_max(controls.min + egui::vec2(button_w * 3.0, 0.0), controls.max);
+        for (rect, label, id) in [
+            (minus, "-", "zoom-out"),
+            (fit, "fit", "fit"),
+            (plus, "+", "zoom-in"),
+        ] {
+            let response = ui.interact(rect, ui.id().with(id), egui::Sense::click());
+            if response.hovered() {
+                painter.rect_filled(rect.shrink(2.0), 3.0, BG3);
+            }
+            painter.text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                label,
+                egui::FontId::monospace(11.0),
+                if response.hovered() { FG1 } else { FG2 },
+            );
+            if response.clicked() {
+                match id {
+                    "zoom-out" => self.canvas_zoom = (self.canvas_zoom - 0.1).max(0.35),
+                    "fit" => self.fit_canvas_to_rect(canvas_rect),
+                    "zoom-in" => self.canvas_zoom = (self.canvas_zoom + 0.1).min(1.8),
+                    _ => {}
+                }
+            }
+        }
+        painter.text(
+            label_rect.center(),
+            egui::Align2::CENTER_CENTER,
             format!("{:.0}%", self.canvas_zoom * 100.0),
             egui::FontId::monospace(10.0),
             FG3,
@@ -2191,21 +2339,46 @@ fn primary_toolbar_button(label: &'static str) -> egui::Button<'static> {
     .stroke(egui::Stroke::new(1.0, ACCENT))
 }
 
-fn rail_button(
+fn rail_row(
+    ui: &mut egui::Ui,
     label: String,
     selected: bool,
-    _indent: f32,
-    accent: egui::Color32,
-) -> egui::Button<'static> {
+    dot: Option<egui::Color32>,
+    indent: f32,
+    height: f32,
+) -> egui::Response {
+    let width = ui.available_width().max(1.0);
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::click());
+    let fill = if selected {
+        BG4
+    } else if response.hovered() {
+        BG3
+    } else {
+        BG2
+    };
+    ui.painter().rect_filled(rect, 0.0, fill);
+    if selected {
+        ui.painter().line_segment(
+            [rect.left_top(), rect.left_bottom()],
+            egui::Stroke::new(2.0, ACCENT),
+        );
+    }
+
+    let mut text_x = rect.left() + 12.0 + indent;
+    if let Some(dot_color) = dot {
+        ui.painter()
+            .circle_filled(egui::pos2(text_x + 3.0, rect.center().y), 3.0, dot_color);
+        text_x += 14.0;
+    }
     let text_color = if selected { FG1 } else { FG2 };
-    egui::Button::new(
-        egui::RichText::new(label)
-            .color(text_color)
-            .size(12.0)
-            .monospace(),
-    )
-    .fill(if selected { BG4 } else { BG2 })
-    .stroke(egui::Stroke::new(1.0, if selected { accent } else { BG2 }))
+    ui.painter().text(
+        egui::pos2(text_x, rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        label,
+        egui::FontId::monospace(12.0),
+        text_color,
+    );
+    response
 }
 
 fn short_path(path: &Path, max_chars: usize) -> String {
@@ -2285,6 +2458,26 @@ fn world_to_screen(
     world: egui::Vec2,
 ) -> egui::Pos2 {
     rect.min + offset + world * zoom
+}
+
+fn world_bounds(nodes: &[SkillNode]) -> egui::Rect {
+    let min_x = nodes
+        .iter()
+        .map(|node| node.position_x)
+        .fold(f32::INFINITY, f32::min);
+    let min_y = nodes
+        .iter()
+        .map(|node| node.position_y)
+        .fold(f32::INFINITY, f32::min);
+    let max_x = nodes
+        .iter()
+        .map(|node| node.position_x + NODE_COLUMN_WIDTH)
+        .fold(f32::NEG_INFINITY, f32::max);
+    let max_y = nodes
+        .iter()
+        .map(|node| node.position_y + NODE_INTERACT_HEIGHT)
+        .fold(f32::NEG_INFINITY, f32::max);
+    egui::Rect::from_min_max(egui::pos2(min_x, min_y), egui::pos2(max_x, max_y))
 }
 
 fn draw_canvas_edge(
