@@ -105,6 +105,12 @@ Skip Obsidian checks:
 npm run setup -- --skip-obsidian
 ```
 
+Skip Linux system package installation during setup:
+
+```bash
+SKILLTREE_SKIP_SYSTEM_DEPS=1 npm run setup
+```
+
 The app defaults to `/home/aytzey/Documents/Obsidian Vault/SkillTree` on this machine when that vault exists. Otherwise it uses the platform app data directory.
 
 Override storage manually:
@@ -126,6 +132,7 @@ cargo run -p skilltree-local
 `npm run setup` performs the complete local installation:
 
 - checks for Rust/Cargo
+- installs common Linux build dependencies when a supported package manager is available
 - checks for Obsidian
 - installs Obsidian first when it is missing and a supported package manager is available
 - builds the Rust release binary

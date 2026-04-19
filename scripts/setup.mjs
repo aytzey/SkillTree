@@ -25,6 +25,7 @@ async function main() {
   log(`Vault: ${vaultPath}`);
 
   ensureCargo();
+  ensureLinuxBuildDependencies();
 
   if (!skipObsidian) {
     ensureObsidianInstalled();
@@ -50,6 +51,49 @@ function ensureCargo() {
 
   openUrl("https://rustup.rs/");
   throw new Error("Cargo is not installed. Install Rust from https://rustup.rs/ and rerun setup.");
+}
+
+function ensureLinuxBuildDependencies() {
+  if (platform !== "linux" || process.env.SKILLTREE_SKIP_SYSTEM_DEPS === "1") {
+    return;
+  }
+
+  section("Linux build dependencies");
+  const aptPackages = [
+    "pkg-config",
+    "libssl-dev",
+    "libxkbcommon-dev",
+    "libwayland-dev",
+    "libx11-xcb-dev",
+    "libxcb1-dev",
+    "libxcb-render0-dev",
+    "libxcb-shape0-dev",
+    "libxcb-xfixes0-dev",
+  ];
+  if (commandExists("apt-get")) {
+    if (runSystemPackage("apt-get", ["update"]) && runSystemPackage("apt-get", ["install", "-y", ...aptPackages])) {
+      return;
+    }
+  }
+
+  const dnfPackages = [
+    "pkgconf-pkg-config",
+    "openssl-devel",
+    "libxkbcommon-devel",
+    "wayland-devel",
+    "libX11-devel",
+    "libxcb-devel",
+  ];
+  if (commandExists("dnf") && runSystemPackage("dnf", ["install", "-y", ...dnfPackages])) {
+    return;
+  }
+
+  const pacmanPackages = ["pkgconf", "openssl", "libxkbcommon", "wayland", "libxcb"];
+  if (commandExists("pacman") && runSystemPackage("pacman", ["-S", "--needed", "--noconfirm", ...pacmanPackages])) {
+    return;
+  }
+
+  log("Could not install system build dependencies automatically. Continuing; Cargo will report missing packages if any.");
 }
 
 function ensureObsidianInstalled() {
@@ -274,6 +318,16 @@ function tryRun(command, args, options = {}) {
     ...options,
   });
   return result.status === 0;
+}
+
+function runSystemPackage(command, args) {
+  if (typeof process.getuid === "function" && process.getuid() === 0) {
+    return tryRun(command, args);
+  }
+  if (!commandExists("sudo")) {
+    return false;
+  }
+  return tryRun("sudo", [command, ...args]);
 }
 
 function openUrl(url) {
