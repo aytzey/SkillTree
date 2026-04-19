@@ -1,0 +1,104 @@
+.skilltree-control-view {
+  padding: 18px;
+  overflow: auto;
+}
+
+.skilltree-control-header h2 {
+  margin: 0 0 4px;
+}
+
+.skilltree-control-header p,
+.skilltree-control-muted {
+  color: var(--text-muted);
+  white-space: pre-line;
+}
+
+.skilltree-control-toolbar,
+.skilltree-control-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.skilltree-control-select {
+  width: 100%;
+  margin: 8px 0 12px;
+}
+
+.skilltree-control-layout {
+  display: grid;
+  grid-template-columns: minmax(190px, 0.9fr) minmax(240px, 1.1fr);
+  gap: 16px;
+}
+
+.skilltree-control-list,
+.skilltree-control-detail {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 12px;
+  min-width: 0;
+}
+
+.skilltree-control-node {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--text-normal);
+  display: flex;
+  gap: 8px;
+  margin: 2px 0;
+  min-height: 32px;
+  text-align: left;
+  width: 100%;
+}
+
+.skilltree-control-node:hover,
+.skilltree-control-node.is-selected {
+  background: var(--background-modifier-hover);
+}
+
+.skilltree-status-dot {
+  border-radius: 999px;
+  display: inline-block;
+  height: 9px;
+  width: 9px;
+}
+
+.status-locked {
+  background: var(--text-faint);
+}
+
+.status-available {
+  background: var(--color-yellow);
+}
+
+.status-in_progress {
+  background: var(--color-blue);
+}
+
+.status-completed {
+  background: var(--color-green);
+}
+
+.skilltree-control-task {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin: 6px 0;
+}
+
+.skilltree-control-empty {
+  border: 1px dashed var(--background-modifier-border);
+  border-radius: 8px;
+  color: var(--text-muted);
+  margin-top: 16px;
+  padding: 18px;
+}
+
+@media (max-width: 720px) {
+  .skilltree-control-layout {
+    grid-template-columns: 1fr;
+  }
+}

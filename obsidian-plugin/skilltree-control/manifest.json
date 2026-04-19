@@ -1,0 +1,10 @@
+{
+  "id": "skilltree-control",
+  "name": "SkillTree Control",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "Control local SkillTree roadmaps from Obsidian vault folders and Markdown notes.",
+  "author": "aytzey",
+  "authorUrl": "https://github.com/aytzey/SkillTree",
+  "isDesktopOnly": true
+}

@@ -1,0 +1,23 @@
+{
+  "name": "skilltree-control-obsidian",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Obsidian desktop plugin for controlling SkillTree Local vault-backed roadmaps.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aytzey/SkillTree.git",
+    "directory": "obsidian-plugin/skilltree-control"
+  },
+  "license": "MIT",
+  "scripts": {
+    "build": "node esbuild.config.mjs production",
+    "dev": "node esbuild.config.mjs"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "builtin-modules": "^5.0.0",
+    "esbuild": "^0.27.2",
+    "obsidian": "^1.10.3",
+    "typescript": "^5"
+  }
+}

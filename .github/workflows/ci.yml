@@ -1,0 +1,64 @@
+name: SkillTree Local CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  desktop:
+    name: Desktop app and installer (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install Linux GUI build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-dev libwayland-dev libx11-xcb-dev libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Audit Node toolchain
+        run: npm audit
+
+      - name: Check Rust formatting
+        run: cargo fmt --check
+
+      - name: Check Rust desktop app
+        run: cargo check -p skilltree-local
+
+      - name: Lint Rust desktop app
+        run: cargo clippy -p skilltree-local -- -D warnings
+
+      - name: Test Rust desktop app
+        run: cargo test -p skilltree-local
+
+      - name: Build Obsidian plugin
+        run: npm run obsidian:build
+
+      - name: Exercise installer without Obsidian install
+        shell: bash
+        run: npm run setup -- --skip-obsidian --vault "$RUNNER_TEMP/SkillTree Vault"
+
+      - name: Run doctor
+        shell: bash
+        env:
+          OBSIDIAN_VAULT_PATH: ${{ runner.temp }}/SkillTree Vault
+        run: npm run doctor -- --skip-obsidian

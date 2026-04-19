@@ -85,6 +85,7 @@ function CanvasParticles() {
 
 type SaveState = "idle" | "unsaved" | "saving" | "saved" | "failed";
 type ImportMode = "new" | "replace";
+type ObsidianSyncState = "idle" | "syncing" | "failed";
 
 interface EditorProps {
   tree: SkillTreeData;
@@ -158,6 +159,9 @@ function EditorInner({
   );
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [shareFeedback, setShareFeedback] = useState<string | null>(null);
+  const [obsidianSyncState, setObsidianSyncState] =
+    useState<ObsidianSyncState>("idle");
+  const [obsidianFeedback, setObsidianFeedback] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -200,6 +204,17 @@ function EditorInner({
 
     return () => window.clearTimeout(timer);
   }, [shareFeedback]);
+
+  useEffect(() => {
+    if (!obsidianFeedback) return undefined;
+
+    const timer = window.setTimeout(() => {
+      setObsidianFeedback(null);
+      setObsidianSyncState("idle");
+    }, 5000);
+
+    return () => window.clearTimeout(timer);
+  }, [obsidianFeedback]);
 
   useEffect(() => {
     setNodes((currentNodes) => {
@@ -406,6 +421,64 @@ function EditorInner({
       setSaveState("failed");
     }
   }, [buildRequestHeaders, effectiveCanEdit, getCurrentTreeSnapshot, tree.id]);
+
+  const handlePushObsidian = useCallback(async () => {
+    if (!canEdit) return;
+
+    setObsidianSyncState("syncing");
+    setObsidianFeedback("Writing Obsidian notes...");
+
+    try {
+      if (effectiveCanEdit) {
+        await handleSave();
+      }
+
+      const response = await fetch(`/api/obsidian/trees/${tree.id}/push`, {
+        method: "POST",
+        headers: buildRequestHeaders(true),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(typeof data.error === "string" ? data.error : "Obsidian push failed");
+      }
+
+      setObsidianSyncState("idle");
+      setObsidianFeedback(`Pushed ${data.nodeCount ?? 0} nodes to Obsidian`);
+    } catch (error) {
+      setObsidianSyncState("failed");
+      setObsidianFeedback(error instanceof Error ? error.message : "Obsidian push failed");
+    }
+  }, [buildRequestHeaders, canEdit, effectiveCanEdit, handleSave, tree.id]);
+
+  const handlePullObsidian = useCallback(async () => {
+    if (!canEdit) return;
+
+    const confirmed = window.confirm(
+      "Pull from Obsidian will replace this tree with the Markdown notes in your vault. Continue?"
+    );
+    if (!confirmed) return;
+
+    setObsidianSyncState("syncing");
+    setObsidianFeedback("Reading Obsidian notes...");
+
+    try {
+      const response = await fetch(`/api/obsidian/trees/${tree.id}/pull`, {
+        method: "POST",
+        headers: buildRequestHeaders(true),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(typeof data.error === "string" ? data.error : "Obsidian pull failed");
+      }
+
+      setObsidianSyncState("idle");
+      setObsidianFeedback(`Pulled ${data.nodeCount ?? 0} nodes from Obsidian`);
+      window.setTimeout(() => window.location.reload(), 600);
+    } catch (error) {
+      setObsidianSyncState("failed");
+      setObsidianFeedback(error instanceof Error ? error.message : "Obsidian pull failed");
+    }
+  }, [buildRequestHeaders, canEdit, tree.id]);
 
   const handleChangeShareMode = useCallback(
     async (mode: ShareMode) => {
@@ -1197,13 +1270,17 @@ function EditorInner({
         onExportBackup={handleExportBackup}
         onImportNew={() => openImportPicker("new")}
         onImportReplace={() => openImportPicker("replace")}
+        onPushObsidian={handlePushObsidian}
+        onPullObsidian={handlePullObsidian}
         onToggleMode={() => setIsReadOnly((current) => !current)}
         shareMode={shareMode}
         canEdit={canEdit}
         canManageShare={canManageShare}
         isReadOnly={isReadOnly}
         saveState={saveState}
+        obsidianSyncState={obsidianSyncState}
         shareFeedback={shareFeedback}
+        obsidianFeedback={obsidianFeedback}
       />
 
       <div className="flex-1 flex min-h-0">

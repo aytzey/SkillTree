@@ -1,0 +1,134 @@
+name: Release SkillTree Local
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  desktop:
+    name: Desktop release (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive_ext: tar.gz
+          - os: macos-13
+            target: x86_64-apple-darwin
+            archive_ext: tar.gz
+          - os: macos-14
+            target: aarch64-apple-darwin
+            archive_ext: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive_ext: zip
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install Linux GUI build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-dev libwayland-dev libx11-xcb-dev libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
+
+      - name: Build desktop binary
+        run: cargo build -p skilltree-local --release --target ${{ matrix.target }}
+
+      - name: Package Unix binary
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/package
+          cp "target/${{ matrix.target }}/release/skilltree-local" dist/package/skilltree-local
+          chmod +x dist/package/skilltree-local
+          tar -czf "dist/skilltree-local-${{ github.ref_name }}-${{ matrix.target }}.tar.gz" -C dist/package skilltree-local
+
+      - name: Package Windows binary
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist/package | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/skilltree-local.exe" "dist/package/skilltree-local.exe"
+          Compress-Archive -Path "dist/package/skilltree-local.exe" -DestinationPath "dist/skilltree-local-${{ github.ref_name }}-${{ matrix.target }}.zip" -Force
+
+      - name: Upload desktop artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: skilltree-local-${{ matrix.target }}
+          path: dist/skilltree-local-${{ github.ref_name }}-${{ matrix.target }}.${{ matrix.archive_ext }}
+          if-no-files-found: error
+
+  obsidian-plugin:
+    name: Obsidian plugin release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Audit Node toolchain
+        run: npm audit
+
+      - name: Build Obsidian plugin
+        run: npm run obsidian:build
+
+      - name: Package Obsidian plugin
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/plugin
+          cp obsidian-plugin/skilltree-control/manifest.json dist/plugin/manifest.json
+          cp obsidian-plugin/skilltree-control/main.js dist/plugin/main.js
+          cp obsidian-plugin/skilltree-control/styles.css dist/plugin/styles.css
+          cd dist/plugin
+          zip -r "../skilltree-control-${GITHUB_REF_NAME}.zip" .
+
+      - name: Upload plugin artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: skilltree-control
+          path: dist/skilltree-control-${{ github.ref_name }}.zip
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub release
+    runs-on: ubuntu-latest
+    needs:
+      - desktop
+      - obsidian-plugin
+
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

@@ -5,6 +5,7 @@ import { useState, useEffect, useRef } from "react";
 import type { ShareMode } from "@/types";
 
 type SaveState = "idle" | "unsaved" | "saving" | "saved" | "failed";
+type ObsidianSyncState = "idle" | "syncing" | "failed";
 
 interface WorldHeaderProps {
   title: string;
@@ -15,13 +16,17 @@ interface WorldHeaderProps {
   onExportBackup: () => void;
   onImportNew: () => void;
   onImportReplace: () => void;
+  onPushObsidian: () => Promise<void>;
+  onPullObsidian: () => Promise<void>;
   onToggleMode: () => void;
   shareMode: ShareMode;
   canEdit: boolean;
   canManageShare: boolean;
   isReadOnly: boolean;
   saveState: SaveState;
+  obsidianSyncState: ObsidianSyncState;
   shareFeedback?: string | null;
+  obsidianFeedback?: string | null;
 }
 
 const saveLabels: Record<SaveState, string> = {
@@ -55,13 +60,17 @@ export function WorldHeader({
   onExportBackup,
   onImportNew,
   onImportReplace,
+  onPushObsidian,
+  onPullObsidian,
   onToggleMode,
   shareMode,
   canEdit,
   canManageShare,
   isReadOnly,
   saveState,
+  obsidianSyncState,
   shareFeedback,
+  obsidianFeedback,
 }: WorldHeaderProps) {
   const [updatingShare, setUpdatingShare] = useState(false);
   const [overflowOpen, setOverflowOpen] = useState(false);
@@ -136,6 +145,11 @@ export function WorldHeader({
           {shareFeedback && (
             <span className="text-[10px] font-mono text-poe-energy-blue max-w-[220px] truncate">
               {shareFeedback}
+            </span>
+          )}
+          {obsidianFeedback && (
+            <span className={`text-[10px] font-mono max-w-[260px] truncate ${obsidianSyncState === "failed" ? "text-poe-danger" : "text-poe-energy-blue"}`}>
+              {obsidianFeedback}
             </span>
           )}
 
@@ -225,6 +239,32 @@ export function WorldHeader({
                   >
                     Backup JSON
                   </button>
+
+                  {canEdit && (
+                    <button
+                      onClick={() => {
+                        void onPushObsidian();
+                        closeOverflow();
+                      }}
+                      disabled={obsidianSyncState === "syncing"}
+                      className="poe-btn px-3 py-1.5 text-sm text-left disabled:opacity-50"
+                    >
+                      {obsidianSyncState === "syncing" ? "Syncing..." : "Push to Obsidian"}
+                    </button>
+                  )}
+
+                  {canEdit && (
+                    <button
+                      onClick={() => {
+                        void onPullObsidian();
+                        closeOverflow();
+                      }}
+                      disabled={obsidianSyncState === "syncing"}
+                      className="poe-btn px-3 py-1.5 text-sm text-left disabled:opacity-50"
+                    >
+                      Pull from Obsidian
+                    </button>
+                  )}
 
                   {canManageShare && (
                     <button

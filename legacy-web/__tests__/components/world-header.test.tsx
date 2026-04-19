@@ -10,7 +10,9 @@ jest.mock("next/link", () => {
   return MockLink;
 });
 
-const defaultProps = {
+type WorldHeaderProps = React.ComponentProps<typeof WorldHeader>;
+
+const defaultProps: WorldHeaderProps = {
   title: "Test Tree",
   onSave: jest.fn().mockResolvedValue(undefined),
   onAddNode: jest.fn(),
@@ -19,16 +21,20 @@ const defaultProps = {
   onExportBackup: jest.fn(),
   onImportNew: jest.fn(),
   onImportReplace: jest.fn(),
+  onPushObsidian: jest.fn().mockResolvedValue(undefined),
+  onPullObsidian: jest.fn().mockResolvedValue(undefined),
   onToggleMode: jest.fn(),
   shareMode: "private" as ShareMode,
   canEdit: true,
   canManageShare: true,
   isReadOnly: false,
   saveState: "idle" as const,
+  obsidianSyncState: "idle" as const,
   shareFeedback: null,
+  obsidianFeedback: null,
 };
 
-function setup(overrides: Partial<typeof defaultProps> = {}) {
+function setup(overrides: Partial<WorldHeaderProps> = {}) {
   return render(<WorldHeader {...defaultProps} {...overrides} />);
 }
 

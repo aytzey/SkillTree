@@ -1,47 +1,40 @@
 {
-  "name": "skiltree",
+  "name": "skilltree-local",
   "version": "0.1.0",
   "private": true,
+  "description": "Rust desktop skill-tree planner with Obsidian-compatible Markdown storage, local installers, CI, and GitHub Release auto-updates.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aytzey/SkillTree.git"
+  },
+  "keywords": [
+    "rust",
+    "desktop",
+    "obsidian",
+    "egui",
+    "markdown",
+    "local-first",
+    "skill-tree"
+  ],
+  "license": "MIT",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint",
-    "test": "jest",
-    "test:watch": "jest --watch"
+    "dev": "cargo run -p skilltree-local",
+    "build": "cargo build -p skilltree-local --release",
+    "desktop:dev": "cargo run -p skilltree-local",
+    "desktop:build": "cargo build -p skilltree-local --release",
+    "desktop:install": "bash scripts/install-desktop.sh",
+    "setup": "node scripts/setup.mjs",
+    "doctor": "node scripts/doctor.mjs",
+    "start": "cargo run -p skilltree-local",
+    "obsidian:build": "npm --prefix obsidian-plugin/skilltree-control run build",
+    "obsidian:dev": "npm --prefix obsidian-plugin/skilltree-control run dev",
+    "obsidian:install": "npm run obsidian:build && node scripts/install-obsidian-plugin.mjs"
   },
-  "dependencies": {
-    "@prisma/adapter-pg": "^7.6.0",
-    "@prisma/client": "^7.6.0",
-    "@xyflow/react": "^12.10.2",
-    "bcryptjs": "^3.0.3",
-    "dagre": "^0.8.5",
-    "framer-motion": "^12.38.0",
-    "nanoid": "^5.1.7",
-    "next": "14.2.35",
-    "next-auth": "^5.0.0-beta.30",
-    "pg": "^8.20.0",
-    "react": "^18",
-    "react-dom": "^18"
-  },
+  "dependencies": {},
   "devDependencies": {
-    "@jest/globals": "^30.3.0",
-    "@testing-library/jest-dom": "^6.9.1",
-    "@testing-library/react": "^16.3.2",
-    "@types/bcryptjs": "^2.4.6",
-    "@types/dagre": "^0.7.54",
-    "@types/node": "^20",
-    "@types/react": "^18",
-    "@types/react-dom": "^18",
-    "eslint": "^8",
-    "eslint-config-next": "14.2.35",
-    "jest": "^30.3.0",
-    "jest-environment-jsdom": "^30.3.0",
-    "postcss": "^8",
-    "prisma": "^7.6.0",
-    "tailwindcss": "^3.4.1",
-    "ts-jest": "^29.4.9",
-    "ts-node": "^10.9.2",
+    "builtin-modules": "^5.1.0",
+    "esbuild": "^0.28.0",
+    "obsidian": "^1.12.3",
     "typescript": "^5"
   }
 }
