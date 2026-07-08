@@ -51,7 +51,7 @@ Grab prebuilt binaries from the [latest release](https://github.com/aytzey/Skill
 Linux quick download:
 
 ```bash
-curl -L https://github.com/aytzey/SkillTree/releases/latest/download/skilltree-local-v0.2.0-x86_64-unknown-linux-gnu.tar.gz | tar -xz
+curl -L https://github.com/aytzey/SkillTree/releases/download/v0.2.0/skilltree-local-v0.2.0-x86_64-unknown-linux-gnu.tar.gz | tar -xz
 chmod +x skilltree-local
 ./skilltree-local
 ```
