@@ -7,17 +7,22 @@
 [![Rust](https://img.shields.io/badge/Rust-native%20desktop-orange)](crates/skilltree-local)
 [![Obsidian](https://img.shields.io/badge/Obsidian-compatible-7c3aed)](obsidian-plugin/skilltree-control)
 
+**Native Rust desktop app that plans skill trees as plain Markdown in your Obsidian vault — LLM-assisted subtree generation, 3-OS CI, self-updating release binaries.**
+
 Local-first Rust desktop app for planning skills, learning paths, and project roadmaps as editable trees. SkillTree Local runs without a server, stores everything on disk, and can use an Obsidian vault as its native document database.
 
 SkillTree Local is built for people who want roadmap software they can own: no hosted backend, no database server, no forced account, no deploy step. The app writes normal Markdown notes plus a small JSON graph manifest, so your learning plans stay readable in Obsidian, Git, and any editor.
 
-If you like local-first developer tools, Rust desktop apps, or Obsidian-compatible workflows, this is the kind of project worth starring.
+### Conjure: LLM-assisted subtree generation
+
+Select a node, press Cmd/Ctrl+J, and the Conjure panel asks a model via [OpenRouter](https://openrouter.ai) to propose child skills for that node. The request runs on a background thread, responses are parsed as structured JSON suggestions, and accepted suggestions are inserted as real child nodes in the tree. You bring your own OpenRouter API key (set in app settings); the default model is `anthropic/claude-sonnet-4.6` and other models are selectable. Without a key, everything else in the app works normally.
 
 ## Highlights
 
 | Area | What is implemented |
 | --- | --- |
 | Desktop app | Native Rust GUI with `egui/eframe`, not Electron and not a webview wrapper. |
+| LLM assist | Conjure panel generates child-skill suggestions via OpenRouter and inserts them as nodes. |
 | Storage | Markdown notes for people, `_skilltree.json` for stable graph state. |
 | Obsidian | Desktop plugin that reads the same vault files and launches the native app. |
 | Installer | Cross-platform setup for Linux, macOS, and Windows with Obsidian checks. |
@@ -35,20 +40,18 @@ If you like local-first developer tools, Rust desktop apps, or Obsidian-compatib
 
 ## Download
 
-Latest release: [v0.1.0](https://github.com/aytzey/SkillTree/releases/latest)
+Grab prebuilt binaries from the [latest release](https://github.com/aytzey/SkillTree/releases/latest) (currently v0.2.0). Assets:
 
-| Platform | Asset |
-| --- | --- |
-| Linux x86_64 | [`skilltree-local-v0.1.0-x86_64-unknown-linux-gnu.tar.gz`](https://github.com/aytzey/SkillTree/releases/latest/download/skilltree-local-v0.1.0-x86_64-unknown-linux-gnu.tar.gz) |
-| macOS Apple Silicon | [`skilltree-local-v0.1.0-aarch64-apple-darwin.tar.gz`](https://github.com/aytzey/SkillTree/releases/latest/download/skilltree-local-v0.1.0-aarch64-apple-darwin.tar.gz) |
-| macOS Intel | [`skilltree-local-v0.1.0-x86_64-apple-darwin.tar.gz`](https://github.com/aytzey/SkillTree/releases/latest/download/skilltree-local-v0.1.0-x86_64-apple-darwin.tar.gz) |
-| Windows x86_64 | [`skilltree-local-v0.1.0-x86_64-pc-windows-msvc.zip`](https://github.com/aytzey/SkillTree/releases/latest/download/skilltree-local-v0.1.0-x86_64-pc-windows-msvc.zip) |
-| Obsidian plugin | [`skilltree-control-v0.1.0.zip`](https://github.com/aytzey/SkillTree/releases/latest/download/skilltree-control-v0.1.0.zip) |
+- `skilltree-local-v0.2.0-x86_64-unknown-linux-gnu.tar.gz` — Linux x86_64
+- `skilltree-local-v0.2.0-aarch64-apple-darwin.tar.gz` — macOS Apple Silicon
+- `skilltree-local-v0.2.0-x86_64-apple-darwin.tar.gz` — macOS Intel
+- `skilltree-local-v0.2.0-x86_64-pc-windows-msvc.zip` — Windows x86_64
+- `skilltree-control-v0.2.0.zip` — Obsidian plugin
 
 Linux quick download:
 
 ```bash
-curl -L https://github.com/aytzey/SkillTree/releases/latest/download/skilltree-local-v0.1.0-x86_64-unknown-linux-gnu.tar.gz | tar -xz
+curl -L https://github.com/aytzey/SkillTree/releases/latest/download/skilltree-local-v0.2.0-x86_64-unknown-linux-gnu.tar.gz | tar -xz
 chmod +x skilltree-local
 ./skilltree-local
 ```
@@ -147,7 +150,7 @@ npm run setup
 Use a specific Obsidian vault:
 
 ```bash
-npm run setup -- --vault "/home/aytzey/Documents/Obsidian Vault"
+npm run setup -- --vault "$HOME/Documents/Obsidian Vault"
 ```
 
 Skip Obsidian checks:
@@ -162,7 +165,7 @@ Skip Linux system package installation during setup:
 SKILLTREE_SKIP_SYSTEM_DEPS=1 npm run setup
 ```
 
-The app defaults to `/home/aytzey/Documents/Obsidian Vault/SkillTree` on this machine when that vault exists. Otherwise it uses the platform app data directory.
+The app defaults to `~/Documents/Obsidian Vault/SkillTree` when that vault exists. Otherwise it uses the platform app data directory.
 
 Override storage manually:
 
@@ -173,7 +176,7 @@ SKILLTREE_STORAGE_ROOT="/path/to/SkillTree" cargo run -p skilltree-local
 Or point directly at an Obsidian vault:
 
 ```bash
-OBSIDIAN_VAULT_PATH="/home/aytzey/Documents/Obsidian Vault" \
+OBSIDIAN_VAULT_PATH="$HOME/Documents/Obsidian Vault" \
 SKILLTREE_OBSIDIAN_ROOT="SkillTree" \
 cargo run -p skilltree-local
 ```
@@ -213,7 +216,7 @@ The Obsidian plugin is desktop-only because it launches a local binary and works
 Install the plugin into a vault:
 
 ```bash
-npm run obsidian:install -- "/home/aytzey/Documents/Obsidian Vault"
+npm run obsidian:install -- "$HOME/Documents/Obsidian Vault"
 ```
 
 Then enable `SkillTree Control` from Obsidian community plugins.
@@ -221,7 +224,7 @@ Then enable `SkillTree Control` from Obsidian community plugins.
 If the launch button cannot find the app, set `Desktop app path` in plugin settings to:
 
 ```text
-/home/aytzey/.local/bin/skilltree-local
+~/.local/bin/skilltree-local
 ```
 
 ## Auto Updates
@@ -243,10 +246,10 @@ GITHUB_TOKEN=... skilltree-local
 Release tags should follow `vX.Y.Z`. The release workflow publishes assets named like:
 
 ```text
-skilltree-local-v0.1.0-x86_64-unknown-linux-gnu.tar.gz
-skilltree-local-v0.1.0-x86_64-apple-darwin.tar.gz
-skilltree-local-v0.1.0-aarch64-apple-darwin.tar.gz
-skilltree-local-v0.1.0-x86_64-pc-windows-msvc.zip
+skilltree-local-v0.2.0-x86_64-unknown-linux-gnu.tar.gz
+skilltree-local-v0.2.0-x86_64-apple-darwin.tar.gz
+skilltree-local-v0.2.0-aarch64-apple-darwin.tar.gz
+skilltree-local-v0.2.0-x86_64-pc-windows-msvc.zip
 ```
 
 ## Release
@@ -254,8 +257,8 @@ skilltree-local-v0.1.0-x86_64-pc-windows-msvc.zip
 Create a release by pushing a tag:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag vX.Y.Z
+git push origin vX.Y.Z
 ```
 
 GitHub Actions builds and uploads:

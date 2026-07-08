@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use chrono::Utc;
-use directories::ProjectDirs;
+use directories::{ProjectDirs, UserDirs};
 use eframe::egui;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -15,7 +15,14 @@ use walkdir::WalkDir;
 const MANIFEST_FILE: &str = "_skilltree.json";
 const TREE_NOTE_FILE: &str = "tree.md";
 const DEFAULT_ROOT_FOLDER: &str = "SkillTree";
-const DEFAULT_OBSIDIAN_VAULT: &str = "/home/aytzey/Documents/Obsidian Vault";
+const DEFAULT_VAULT_NAME: &str = "Obsidian Vault";
+
+fn default_obsidian_vault() -> PathBuf {
+    UserDirs::new()
+        .and_then(|dirs| dirs.document_dir().map(Path::to_path_buf))
+        .unwrap_or_else(|| PathBuf::from("Documents"))
+        .join(DEFAULT_VAULT_NAME)
+}
 const GITHUB_OWNER: &str = "aytzey";
 const GITHUB_REPO: &str = "SkillTree";
 const SETTINGS_FILE: &str = "settings.json";
@@ -444,16 +451,24 @@ impl SkillTreeApp {
         self.conjure_error = None;
         self.conjure_results.clear();
         thread::spawn(move || {
-            let result = openrouter_complete(&api_key, &model, system, &user)
-                .map_err(|e| format!("{e:#}"));
+            let result =
+                openrouter_complete(&api_key, &model, system, &user).map_err(|e| format!("{e:#}"));
             let _ = tx.send(result);
         });
     }
 
     fn apply_conjure_suggestions(&mut self) {
-        let Some(tree_index) = self.selected_tree else { return };
-        let Some(parent_id) = self.selected_node_id.clone() else { return };
-        let parent_pos = match self.trees[tree_index].nodes.iter().find(|n| n.id == parent_id) {
+        let Some(tree_index) = self.selected_tree else {
+            return;
+        };
+        let Some(parent_id) = self.selected_node_id.clone() else {
+            return;
+        };
+        let parent_pos = match self.trees[tree_index]
+            .nodes
+            .iter()
+            .find(|n| n.id == parent_id)
+        {
             Some(n) => (n.position_x, n.position_y),
             None => (200.0, 200.0),
         };
@@ -676,10 +691,7 @@ impl SkillTreeApp {
                         egui::Sense::hover(),
                     );
                     let _ = rect;
-                    ui.colored_label(
-                        egui::Color32::from_rgb(200, 107, 92),
-                        format!("⚠  {err}"),
-                    );
+                    ui.colored_label(egui::Color32::from_rgb(200, 107, 92), format!("⚠  {err}"));
                 }
 
                 ui.add_space(10.0);
@@ -688,11 +700,9 @@ impl SkillTreeApp {
 
                 if self.conjure_results.is_empty() {
                     ui.label(
-                        egui::RichText::new(
-                            "Suggestions will appear here after you hit Generate.",
-                        )
-                        .color(FG3)
-                        .size(12.0),
+                        egui::RichText::new("Suggestions will appear here after you hit Generate.")
+                            .color(FG3)
+                            .size(12.0),
                     );
                 } else {
                     ui.label(
@@ -756,7 +766,10 @@ impl SkillTreeApp {
                     ui.add_space(6.0);
                     ui.horizontal(|ui| {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.add(primary_toolbar_button("Add all to canvas")).clicked() {
+                            if ui
+                                .add(primary_toolbar_button("Add all to canvas"))
+                                .clicked()
+                            {
                                 apply_now = true;
                             }
                             if ui.add(toolbar_button("Discard")).clicked() {
@@ -978,11 +991,12 @@ impl SkillTreeApp {
     }
 
     fn use_obsidian_vault(&mut self) {
-        let vault_path =
-            env::var("OBSIDIAN_VAULT_PATH").unwrap_or_else(|_| DEFAULT_OBSIDIAN_VAULT.to_string());
+        let vault_path = env::var("OBSIDIAN_VAULT_PATH")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| default_obsidian_vault());
         let root =
             env::var("SKILLTREE_OBSIDIAN_ROOT").unwrap_or_else(|_| DEFAULT_ROOT_FOLDER.to_string());
-        self.storage_root = Path::new(&vault_path).join(root);
+        self.storage_root = vault_path.join(root);
         self.reload();
     }
 }
@@ -998,10 +1012,10 @@ impl eframe::App for SkillTreeApp {
         if ctx.input_mut(|input| input.consume_key(egui::Modifiers::COMMAND, egui::Key::R)) {
             self.reload();
         }
-        if ctx.input_mut(|input| input.consume_key(egui::Modifiers::COMMAND, egui::Key::J)) {
-            if self.selected_node_id.is_some() {
-                self.open_conjure();
-            }
+        if ctx.input_mut(|input| input.consume_key(egui::Modifiers::COMMAND, egui::Key::J))
+            && self.selected_node_id.is_some()
+        {
+            self.open_conjure();
         }
         if (self.show_settings || self.show_conjure)
             && ctx.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
@@ -1128,11 +1142,7 @@ impl SkillTreeApp {
             ui.add_space(8.0);
 
             // App branding — Cinzel serif matches handoff display font
-            ui.label(
-                egui::RichText::new("\u{25B2}")
-                    .color(ACCENT)
-                    .size(13.0),
-            );
+            ui.label(egui::RichText::new("\u{25B2}").color(ACCENT).size(13.0));
             ui.add_space(2.0);
             ui.label(
                 egui::RichText::new("SkillTree")
@@ -1195,12 +1205,7 @@ impl SkillTreeApp {
 
             if !unique_tags.is_empty() {
                 ui.add_space(4.0);
-                ui.label(
-                    egui::RichText::new("#")
-                        .monospace()
-                        .color(FG3)
-                        .size(11.0),
-                );
+                ui.label(egui::RichText::new("#").monospace().color(FG3).size(11.0));
                 let mut clicked: Option<String> = None;
                 for tag in unique_tags.iter().take(4) {
                     let is_active = self.active_tag_filter.as_ref() == Some(tag);
@@ -1222,7 +1227,8 @@ impl SkillTreeApp {
                 ui.add_space(6.0);
 
                 // Inspector toggle (rightmost)
-                let _ = ui.add(icon_chip("\u{25A3}", true))
+                let _ = ui
+                    .add(icon_chip("\u{25A3}", true))
                     .on_hover_text("Toggle inspector");
 
                 // Settings (gear)
@@ -1269,8 +1275,10 @@ impl SkillTreeApp {
                 }
 
                 // History icon (reload)
-                if ui.add(icon_chip("\u{21BB}", false))
-                    .on_hover_text("Reload (Ctrl+R)").clicked()
+                if ui
+                    .add(icon_chip("\u{21BB}", false))
+                    .on_hover_text("Reload (Ctrl+R)")
+                    .clicked()
                 {
                     self.reload();
                 }
@@ -1321,7 +1329,7 @@ impl SkillTreeApp {
             .flat_map(|t| t.nodes.iter())
             .filter(|n| n.status == NodeStatus::Completed)
             .count();
-        let is_vault = self.storage_root.starts_with(DEFAULT_OBSIDIAN_VAULT);
+        let is_vault = self.storage_root.starts_with(default_obsidian_vault());
         let mode = if is_vault { "Obsidian vault" } else { "Local" };
         let path_text = self
             .selected_tree_ref()
@@ -1334,7 +1342,8 @@ impl SkillTreeApp {
         ui.horizontal_centered(|ui| {
             ui.add_space(10.0);
             // Status dot + mode
-            let (dot_rect, _) = ui.allocate_exact_size(egui::vec2(10.0, 12.0), egui::Sense::hover());
+            let (dot_rect, _) =
+                ui.allocate_exact_size(egui::vec2(10.0, 12.0), egui::Sense::hover());
             ui.painter().circle_filled(
                 dot_rect.center(),
                 3.0,
@@ -1410,7 +1419,8 @@ impl SkillTreeApp {
         );
 
         // Header row (36px) with bottom border separator
-        let header_rect = egui::Rect::from_min_size(rect.left_top(), egui::vec2(rect.width(), 36.0));
+        let header_rect =
+            egui::Rect::from_min_size(rect.left_top(), egui::vec2(rect.width(), 36.0));
         ui.painter().line_segment(
             [header_rect.left_bottom(), header_rect.right_bottom()],
             egui::Stroke::new(1.0, BORDER1),
@@ -1444,8 +1454,7 @@ impl SkillTreeApp {
                 ui.add_space(10.0);
                 let r = ui.add_sized(
                     [(ui.available_width() - 62.0).max(60.0), 24.0],
-                    egui::TextEdit::singleline(&mut self.new_tree_title)
-                        .hint_text("Tree title..."),
+                    egui::TextEdit::singleline(&mut self.new_tree_title).hint_text("Tree title..."),
                 );
                 if ui.add(toolbar_button("Create")).clicked()
                     || (r.lost_focus()
@@ -1485,8 +1494,11 @@ impl SkillTreeApp {
                 filter_rect.max - egui::vec2(6.0, 2.0),
             );
             let child_id = ui.id().with("tree_filter_edit");
-            let mut child =
-                ui.new_child(egui::UiBuilder::new().max_rect(inner_rect).id_salt(child_id));
+            let mut child = ui.new_child(
+                egui::UiBuilder::new()
+                    .max_rect(inner_rect)
+                    .id_salt(child_id),
+            );
             child.add(
                 egui::TextEdit::singleline(&mut self.tree_filter)
                     .frame(false)
@@ -1494,7 +1506,8 @@ impl SkillTreeApp {
             );
         });
         ui.add_space(8.0);
-        let (sep_rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 1.0), egui::Sense::hover());
+        let (sep_rect, _) =
+            ui.allocate_exact_size(egui::vec2(ui.available_width(), 1.0), egui::Sense::hover());
         ui.painter().rect_filled(sep_rect, 0.0, BORDER1);
         ui.add_space(4.0);
 
@@ -1539,9 +1552,7 @@ impl SkillTreeApp {
                         .collect::<Vec<_>>();
 
                     for (node, depth) in rows {
-                        if !filter.is_empty()
-                            && !node.title.to_lowercase().contains(&filter)
-                        {
+                        if !filter.is_empty() && !node.title.to_lowercase().contains(&filter) {
                             continue;
                         }
                         if let Some(ref tag) = self.active_tag_filter {
@@ -1610,8 +1621,7 @@ impl SkillTreeApp {
                 .as_deref()
                 .is_some_and(|id| self.trees[index].nodes.iter().any(|n| n.id == id));
             if !selected_exists {
-                self.selected_node_id =
-                    self.trees[index].nodes.first().map(|n| n.id.clone());
+                self.selected_node_id = self.trees[index].nodes.first().map(|n| n.id.clone());
             }
         }
         if let Some(node_id) = next_node {
@@ -1970,7 +1980,11 @@ impl SkillTreeApp {
         let Some(tree_index) = self.selected_tree else {
             ui.vertical_centered(|ui| {
                 ui.add_space(120.0);
-                ui.label(egui::RichText::new("No tree selected").color(FG2).size(16.0));
+                ui.label(
+                    egui::RichText::new("No tree selected")
+                        .color(FG2)
+                        .size(16.0),
+                );
                 ui.add_space(6.0);
                 ui.label(
                     egui::RichText::new("Create or select a tree to start")
@@ -2052,15 +2066,10 @@ impl SkillTreeApp {
                     .inner_margin(egui::Margin::symmetric(8, 3))
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
-                            let (dot_rect, _) = ui.allocate_exact_size(
-                                egui::vec2(10.0, 10.0),
-                                egui::Sense::hover(),
-                            );
-                            ui.painter().circle_filled(
-                                dot_rect.center(),
-                                4.0,
-                                status_color_val,
-                            );
+                            let (dot_rect, _) = ui
+                                .allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
+                            ui.painter()
+                                .circle_filled(dot_rect.center(), 4.0, status_color_val);
                             ui.label(
                                 egui::RichText::new(&badge_text)
                                     .monospace()
@@ -2171,10 +2180,8 @@ impl SkillTreeApp {
         // ── Tab bar (Details / Markdown) ──────────────────────────
         ui.add_space(14.0);
         {
-            let (bar_rect, _) = ui.allocate_exact_size(
-                egui::vec2(ui.available_width(), 30.0),
-                egui::Sense::hover(),
-            );
+            let (bar_rect, _) = ui
+                .allocate_exact_size(egui::vec2(ui.available_width(), 30.0), egui::Sense::hover());
             ui.painter().rect_filled(bar_rect, 0.0, BG1);
             ui.painter().line_segment(
                 [bar_rect.left_bottom(), bar_rect.right_bottom()],
@@ -2249,16 +2256,11 @@ impl SkillTreeApp {
                 );
                 let inner = body_rect.shrink2(egui::vec2(12.0, 10.0));
                 let child_id = ui.id().with("md-preview");
-                let mut child = ui
-                    .new_child(egui::UiBuilder::new().max_rect(inner).id_salt(child_id));
+                let mut child =
+                    ui.new_child(egui::UiBuilder::new().max_rect(inner).id_salt(child_id));
                 child.add(
-                    egui::Label::new(
-                        egui::RichText::new(body)
-                            .monospace()
-                            .color(FG1)
-                            .size(11.0),
-                    )
-                    .wrap(),
+                    egui::Label::new(egui::RichText::new(body).monospace().color(FG1).size(11.0))
+                        .wrap(),
                 );
             });
             return;
@@ -2334,7 +2336,11 @@ impl SkillTreeApp {
                     ui.add_space(20.0);
                     let (check_rect, check_resp) =
                         ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::click());
-                    let fill = if task_done { STATUS_DONE } else { egui::Color32::TRANSPARENT };
+                    let fill = if task_done {
+                        STATUS_DONE
+                    } else {
+                        egui::Color32::TRANSPARENT
+                    };
                     let border = if task_done { STATUS_DONE } else { BORDER2 };
                     ui.painter().rect_filled(check_rect, 2.0, fill);
                     ui.painter().rect_stroke(
@@ -2348,8 +2354,10 @@ impl SkillTreeApp {
                         let a = c + egui::vec2(-3.5, 0.0);
                         let b = c + egui::vec2(-1.0, 2.5);
                         let d = c + egui::vec2(3.5, -3.0);
-                        ui.painter().line_segment([a, b], egui::Stroke::new(1.6, BG0));
-                        ui.painter().line_segment([b, d], egui::Stroke::new(1.6, BG0));
+                        ui.painter()
+                            .line_segment([a, b], egui::Stroke::new(1.6, BG0));
+                        ui.painter()
+                            .line_segment([b, d], egui::Stroke::new(1.6, BG0));
                     }
                     ui.add_space(4.0);
                     let text = if task_done {
@@ -2385,8 +2393,7 @@ impl SkillTreeApp {
             ui.add_space(12.0);
             let r = ui.add_sized(
                 [(ui.available_width() - 60.0).max(60.0), 22.0],
-                egui::TextEdit::singleline(&mut self.new_subtask_title)
-                    .hint_text("Add subtask..."),
+                egui::TextEdit::singleline(&mut self.new_subtask_title).hint_text("Add subtask..."),
             );
             if ui.add(toolbar_button("Add")).clicked()
                 || (r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)))
@@ -2395,10 +2402,7 @@ impl SkillTreeApp {
                 if !title.is_empty() {
                     self.trees[tree_index].nodes[node_index]
                         .sub_tasks
-                        .push(SubTask {
-                            title,
-                            done: false,
-                        });
+                        .push(SubTask { title, done: false });
                     self.new_subtask_title.clear();
                 }
             }
@@ -2490,11 +2494,7 @@ impl SkillTreeApp {
             if ui.add(toolbar_button("Add")).clicked()
                 || (r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)))
             {
-                let tag = self
-                    .new_tag
-                    .trim()
-                    .trim_start_matches('#')
-                    .to_string();
+                let tag = self.new_tag.trim().trim_start_matches('#').to_string();
                 if !tag.is_empty() {
                     let tags = &mut self.trees[tree_index].nodes[node_index].tags;
                     if !tags.contains(&tag) {
@@ -2567,9 +2567,7 @@ impl SkillTreeApp {
                             );
                         });
                     ui.label(egui::RichText::new("Diff").color(FG3).size(11.0));
-                    ui.add(
-                        egui::Slider::new(&mut node.difficulty, 1..=5).show_value(false),
-                    );
+                    ui.add(egui::Slider::new(&mut node.difficulty, 1..=5).show_value(false));
                 });
                 ui.horizontal(|ui| {
                     ui.add_space(12.0);
@@ -3509,7 +3507,7 @@ fn optional_json_string(value: Option<&str>) -> String {
 
 fn demo_trees() -> Vec<SkillTree> {
     let tree_id = "demo-dsa";
-    let folder = PathBuf::from(default_storage_root()).join("dsa");
+    let folder = default_storage_root().join("dsa");
     let mk_node = |id: &str,
                    title: &str,
                    status: NodeStatus,
@@ -3549,18 +3547,45 @@ fn demo_trees() -> Vec<SkillTree> {
         }
     };
     let nodes = vec![
-        mk_node("n1", "Arrays & linked lists", NodeStatus::Completed, 2, 3.0, 100,
-            180.0, 80.0,
+        mk_node(
+            "n1",
+            "Arrays & linked lists",
+            NodeStatus::Completed,
+            2,
+            3.0,
+            100,
+            180.0,
+            80.0,
             "Contiguous memory, pointer chains, and when each wins.",
-            &[("Fundamentals", true), ("Pointer arithmetic", true), ("Runtime costs", true)],
-            &["foundations"]),
-        mk_node("n2", "Hash tables", NodeStatus::Completed, 2, 4.0, 100,
-            460.0, 80.0,
+            &[
+                ("Fundamentals", true),
+                ("Pointer arithmetic", true),
+                ("Runtime costs", true),
+            ],
+            &["foundations"],
+        ),
+        mk_node(
+            "n2",
+            "Hash tables",
+            NodeStatus::Completed,
+            2,
+            4.0,
+            100,
+            460.0,
+            80.0,
             "Chained vs. open addressing, load factor, resizing.",
             &[("Hashing functions", true), ("Collision handling", true)],
-            &["foundations"]),
-        mk_node("n3", "Binary search trees", NodeStatus::InProgress, 3, 6.0, 60,
-            320.0, 230.0,
+            &["foundations"],
+        ),
+        mk_node(
+            "n3",
+            "Binary search trees",
+            NodeStatus::InProgress,
+            3,
+            6.0,
+            60,
+            320.0,
+            230.0,
             "Insert, delete, in-order traversal. Degeneracy and balancing motivation.",
             &[
                 ("Read intro chapter", true),
@@ -3569,32 +3594,88 @@ fn demo_trees() -> Vec<SkillTree> {
                 ("Red-black tree walkthrough", false),
                 ("Practice set 1", false),
             ],
-            &["trees", "balanced"]),
-        mk_node("n4", "Graph traversal", NodeStatus::Available, 3, 5.0, 0,
-            120.0, 380.0,
+            &["trees", "balanced"],
+        ),
+        mk_node(
+            "n4",
+            "Graph traversal",
+            NodeStatus::Available,
+            3,
+            5.0,
+            0,
+            120.0,
+            380.0,
             "DFS, BFS, topological sort; when to reach for each.",
-            &[("DFS recursive", false), ("BFS queue", false), ("Topological sort", false)],
-            &["graphs"]),
-        mk_node("n5", "Dynamic programming", NodeStatus::Available, 4, 8.0, 0,
-            320.0, 380.0,
+            &[
+                ("DFS recursive", false),
+                ("BFS queue", false),
+                ("Topological sort", false),
+            ],
+            &["graphs"],
+        ),
+        mk_node(
+            "n5",
+            "Dynamic programming",
+            NodeStatus::Available,
+            4,
+            8.0,
+            0,
+            320.0,
+            380.0,
             "Memoization, tabulation, subproblem structure.",
-            &[("Knapsack", false), ("LIS / LCS", false), ("State compression", false)],
-            &["algorithms"]),
-        mk_node("n6", "Sorting fundamentals", NodeStatus::Available, 2, 4.0, 0,
-            520.0, 380.0,
+            &[
+                ("Knapsack", false),
+                ("LIS / LCS", false),
+                ("State compression", false),
+            ],
+            &["algorithms"],
+        ),
+        mk_node(
+            "n6",
+            "Sorting fundamentals",
+            NodeStatus::Available,
+            2,
+            4.0,
+            0,
+            520.0,
+            380.0,
             "Comparison sorts, stability, external sorting.",
-            &[("Quicksort partitioning", false), ("Mergesort merge step", false), ("Stability proof", false)],
-            &["algorithms"]),
-        mk_node("n7", "Heaps & priority queues", NodeStatus::Locked, 3, 4.0, 0,
-            320.0, 520.0,
+            &[
+                ("Quicksort partitioning", false),
+                ("Mergesort merge step", false),
+                ("Stability proof", false),
+            ],
+            &["algorithms"],
+        ),
+        mk_node(
+            "n7",
+            "Heaps & priority queues",
+            NodeStatus::Locked,
+            3,
+            4.0,
+            0,
+            320.0,
+            520.0,
             "Binary heap invariants, heapify, k-way merge.",
             &[("Heapify", false), ("Top-k with min-heap", false)],
-            &["balanced"]),
-        mk_node("n8", "Tries & suffix structures", NodeStatus::Locked, 5, 9.0, 0,
-            540.0, 520.0,
+            &["balanced"],
+        ),
+        mk_node(
+            "n8",
+            "Tries & suffix structures",
+            NodeStatus::Locked,
+            5,
+            9.0,
+            0,
+            540.0,
+            520.0,
             "Tries, suffix arrays and their uses in text processing.",
-            &[("Basic trie insert", false), ("Suffix array O(n log n)", false)],
-            &["advanced"]),
+            &[
+                ("Basic trie insert", false),
+                ("Suffix array O(n log n)", false),
+            ],
+            &["advanced"],
+        ),
     ];
     let mut edges: Vec<SkillEdge> = Vec::new();
     let add_edge = |edges: &mut Vec<SkillEdge>, from: &str, to: &str, ty: EdgeType| {
@@ -3665,9 +3746,7 @@ const CONJURE_SYSTEM_PROMPT: &str = "You are a skill-tree design assistant. Give
      Keep titles under 48 characters.";
 
 fn build_conjure_user_prompt(title: &str, description: &str, user_ask: &str) -> String {
-    format!(
-        "Parent skill: {title}\nParent description: {description}\nUser ask: {user_ask}"
-    )
+    format!("Parent skill: {title}\nParent description: {description}\nUser ask: {user_ask}")
 }
 
 fn openrouter_complete(api_key: &str, model: &str, system: &str, user: &str) -> Result<String> {
@@ -3727,8 +3806,12 @@ fn parse_conjure_json(raw: &str) -> Result<Vec<ConjureSuggestion>> {
         .trim_start_matches("```")
         .trim_end_matches("```")
         .trim();
-    let value: serde_json::Value = serde_json::from_str(cleaned)
-        .with_context(|| format!("Parse JSON: {}", cleaned.chars().take(200).collect::<String>()))?;
+    let value: serde_json::Value = serde_json::from_str(cleaned).with_context(|| {
+        format!(
+            "Parse JSON: {}",
+            cleaned.chars().take(200).collect::<String>()
+        )
+    })?;
     let list = value
         .get("suggestions")
         .and_then(|v| v.as_array())
@@ -3753,8 +3836,9 @@ fn default_storage_root() -> PathBuf {
         return Path::new(&vault_path).join(root);
     }
 
-    let obsidian_root = Path::new(DEFAULT_OBSIDIAN_VAULT).join(DEFAULT_ROOT_FOLDER);
-    if obsidian_root.exists() || Path::new(DEFAULT_OBSIDIAN_VAULT).exists() {
+    let vault = default_obsidian_vault();
+    let obsidian_root = vault.join(DEFAULT_ROOT_FOLDER);
+    if obsidian_root.exists() || vault.exists() {
         return obsidian_root;
     }
 
@@ -3952,7 +4036,11 @@ fn chip_button(label: &str) -> egui::Button<'_> {
 
 fn icon_chip(glyph: &str, active: bool) -> egui::Button<'_> {
     let color = if active { FG1 } else { FG3 };
-    let fill = if active { BG3 } else { egui::Color32::TRANSPARENT };
+    let fill = if active {
+        BG3
+    } else {
+        egui::Color32::TRANSPARENT
+    };
     egui::Button::new(egui::RichText::new(glyph).color(color).size(13.0))
         .fill(fill)
         .stroke(egui::Stroke::NONE)
@@ -4119,12 +4207,7 @@ fn tag_pill(ui: &mut egui::Ui, tag: &str, active: bool) -> egui::Response {
 fn section_label(ui: &mut egui::Ui, label: &str, right_text: Option<&str>) {
     ui.horizontal(|ui| {
         ui.add_space(12.0);
-        ui.label(
-            egui::RichText::new(label)
-                .monospace()
-                .color(FG3)
-                .size(11.0),
-        );
+        ui.label(egui::RichText::new(label).monospace().color(FG3).size(11.0));
         if let Some(rt) = right_text {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.add_space(12.0);
@@ -4133,7 +4216,6 @@ fn section_label(ui: &mut egui::Ui, label: &str, right_text: Option<&str>) {
         }
     });
 }
-
 
 fn short_path(path: &Path, max_chars: usize) -> String {
     let value = path.display().to_string();
@@ -4151,7 +4233,12 @@ fn short_path(path: &Path, max_chars: usize) -> String {
     format!("...{tail}")
 }
 
-fn radial_disc_mesh(center: egui::Pos2, radius: f32, inner: egui::Color32, outer: egui::Color32) -> egui::Shape {
+fn radial_disc_mesh(
+    center: egui::Pos2,
+    radius: f32,
+    inner: egui::Color32,
+    outer: egui::Color32,
+) -> egui::Shape {
     let segments = 96u32;
     let mut mesh = egui::Mesh::default();
     mesh.colored_vertex(center, inner);
@@ -4232,14 +4319,29 @@ fn draw_canvas_background(
 
     // Deterministic starfield
     let star_seeds: &[(f32, f32, u8)] = &[
-        (0.13, 0.22, 46), (0.82, 0.18, 36), (0.44, 0.77, 40), (0.70, 0.58, 30),
-        (0.24, 0.48, 36), (0.90, 0.84, 36), (0.60, 0.12, 28), (0.08, 0.80, 34),
-        (0.36, 0.34, 30), (0.66, 0.72, 26), (0.18, 0.64, 30), (0.94, 0.44, 26),
-        (0.52, 0.28, 28), (0.76, 0.40, 24), (0.30, 0.88, 24), (0.04, 0.32, 22),
+        (0.13, 0.22, 46),
+        (0.82, 0.18, 36),
+        (0.44, 0.77, 40),
+        (0.70, 0.58, 30),
+        (0.24, 0.48, 36),
+        (0.90, 0.84, 36),
+        (0.60, 0.12, 28),
+        (0.08, 0.80, 34),
+        (0.36, 0.34, 30),
+        (0.66, 0.72, 26),
+        (0.18, 0.64, 30),
+        (0.94, 0.44, 26),
+        (0.52, 0.28, 28),
+        (0.76, 0.40, 24),
+        (0.30, 0.88, 24),
+        (0.04, 0.32, 22),
     ];
     for (fx, fy, alpha) in star_seeds {
         painter.circle_filled(
-            egui::pos2(rect.left() + rect.width() * *fx, rect.top() + rect.height() * *fy),
+            egui::pos2(
+                rect.left() + rect.width() * *fx,
+                rect.top() + rect.height() * *fy,
+            ),
             0.9,
             egui::Color32::from_rgba_unmultiplied(255, 240, 200, *alpha),
         );
@@ -4267,11 +4369,7 @@ fn draw_canvas_empty(painter: &egui::Painter, rect: egui::Rect, title: &str) {
         32.0,
         egui::Color32::from_rgba_unmultiplied(35, 45, 64, 160),
     );
-    painter.circle_stroke(
-        center,
-        32.0,
-        egui::Stroke::new(1.5, BORDER3),
-    );
+    painter.circle_stroke(center, 32.0, egui::Stroke::new(1.5, BORDER3));
     painter.circle_stroke(
         center,
         20.0,
@@ -4346,11 +4444,7 @@ fn draw_canvas_edge(
 
     if lit {
         // Stacked translucent strokes approximate the blur filter used in CSS.
-        let halo = [
-            (9.0, 14u8),
-            (6.0, 26u8),
-            (3.5, 50u8),
-        ];
+        let halo = [(9.0, 14u8), (6.0, 26u8), (3.5, 50u8)];
         for (w, a) in halo {
             painter.line(
                 points.clone(),
@@ -4375,11 +4469,11 @@ fn draw_canvas_node(
 
     // ── True CSS drop-shadow via a ring mesh (smooth alpha falloff) ──
     let halo_spec: Option<(f32, u8)> = match (selected, &node.status) {
-        (true, _)                             => Some((38.0, 180)),
-        (_, NodeStatus::Completed)            => Some((24.0, 150)),
-        (_, NodeStatus::InProgress)           => Some((30.0, 160)),
-        (_, NodeStatus::Available)            => Some((16.0, 110)),
-        (_, NodeStatus::Locked)               => None,
+        (true, _) => Some((38.0, 180)),
+        (_, NodeStatus::Completed) => Some((24.0, 150)),
+        (_, NodeStatus::InProgress) => Some((30.0, 160)),
+        (_, NodeStatus::Available) => Some((16.0, 110)),
+        (_, NodeStatus::Locked) => None,
     };
     if let Some((reach, core_alpha)) = halo_spec {
         painter.add(radial_ring_mesh(
@@ -4443,7 +4537,11 @@ fn draw_canvas_node(
             body_inner,
             body_outer,
         ));
-        painter.circle_stroke(center, radius - 2.0 * zoom, egui::Stroke::new(4.0 * zoom, status));
+        painter.circle_stroke(
+            center,
+            radius - 2.0 * zoom,
+            egui::Stroke::new(4.0 * zoom, status),
+        );
         painter.circle_stroke(
             center,
             radius - 8.0 * zoom,
